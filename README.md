@@ -109,6 +109,6 @@ fft-drr-project/
 ├── experiments/               # Complete 23 benchmark experiment scripts
 ├── outputs/paper_figures/     # High-resolution 300 DPI publication figures & CSV tables
 ├── tests/                     # Verification and regression test suite
-├── main.tex                   # Mathematical formulation and documentation
-└── paper_manuscript.md        # Technical research report
+├── LICENSE                    # MIT License
+└── pyproject.toml             # Package metadata & CLI entry points
 ```
