@@ -10,7 +10,6 @@
 **Author:** Pareel Amre  
 **Affiliation:** Faculty of Computer Science, Technische Universität Dresden (TU Dresden), 01062 Dresden, Germany  
 **Email:** `pareel.amre@gmail.com`  
-**Target Venue:** *IEEE Transactions on Medical Imaging* / *Medical Image Analysis*  
 
 ---
 
@@ -110,6 +109,6 @@ fft-drr-project/
 ├── experiments/               # Complete 23 benchmark experiment scripts
 ├── outputs/paper_figures/     # High-resolution 300 DPI publication figures & CSV tables
 ├── tests/                     # Verification and regression test suite
-├── main.tex                   # IEEE Transactions on Medical Imaging manuscript
-└── paper_manuscript.md        # Comprehensive audited research report
+├── main.tex                   # Mathematical formulation and documentation
+└── paper_manuscript.md        # Technical research report
 ```
