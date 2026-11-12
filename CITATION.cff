@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+title: "Diff-FVR: Differentiable Fourier Volume Rendering for 3D-2D Registration"
+message: "If you use this software in your research, please cite it using the metadata below."
+type: software
+authors:
+  - given-names: Pareel
+    family-names: Amre
+    email: pareel.amre@gmail.com
+    affiliation: "Faculty of Computer Science, TU Dresden"
+repository-code: "https://github.com/pareelamre/diff-fvr"
+url: "https://pareelamre.github.io/diff-fvr/"
+license: MIT
+version: "1.1.0"
+date-released: "2026-11-13"
+keywords:
+  - digitally-reconstructed-radiographs
+  - fourier-volume-rendering
+  - 3d-2d-registration
+  - medical-imaging
+  - image-guided-interventions

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "diff-fvr"
-version = "1.0.0"
+version = "1.1.0"
 description = "Research parallel-beam Fourier volume rendering and biplanar 3D-2D registration"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -45,6 +45,11 @@ gpu = ["torch>=2.0.0"]
 [project.scripts]
 fvr-render = "fvr.cli:main_render"
 fvr-register = "fvr.cli:main_register"
+
+[project.urls]
+Homepage = "https://github.com/pareelamre/diff-fvr"
+Repository = "https://github.com/pareelamre/diff-fvr"
+Issues = "https://github.com/pareelamre/diff-fvr/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
