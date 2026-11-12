@@ -1,0 +1,3 @@
+Framework,Base_mTRE_mm,Joint_Art_Err,Final_Loss,Time_sec,Success_2mm
+Monolithic Rigid Registration,0.7672812341319769,,0.009285975009805568,53.899877071380615,True
+Proposed Articulated Kinematic Registration,0.7672812341319769,1.322593942408299,0.004211475970888983,73.13696479797363,True

@@ -1,0 +1,4 @@
+Pipeline,Masked_Metal,Articulated_Kinematics,Base_mTRE_mm,Final_Loss,Time_sec,Success_2mm,Submillimeter_1mm
+Naive Rigid (Unmasked),False,False,15.192468806545184,0.1440223583889657,16.45379638671875,False,False
+Masked Rigid (No Articulation),True,False,0.7760187779111096,0.03148492676024961,34.17912411689758,True,True
+Proposed Masked Articulated,True,True,0.7760187779111096,0.016320304249606617,49.74903607368469,True,True

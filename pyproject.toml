@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diff-fvr"
+version = "1.0.0"
+description = "Dual-Domain Differentiable Fourier Volume Rendering for Ultra-Fast Biplanar 3D-2D Spine Registration"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Pareel Amre", email = "pareel.amre@gmail.com" }
+]
+keywords = [
+    "digitally-reconstructed-radiographs",
+    "fourier-volume-rendering",
+    "3d-2d-registration",
+    "spine-surgery",
+    "medical-imaging",
+    "image-guided-interventions"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License"
+]
+dependencies = [
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "pandas>=2.0.0",
+    "matplotlib>=3.7.0",
+    "pillow>=9.5.0",
+    "pydicom>=2.4.0",
+    "simpleitk>=2.2.0",
+    "scikit-image>=0.20.0"
+]
+
+[project.scripts]
+fvr-render = "fvr.cli:main_render"
+fvr-register = "fvr.cli:main_register"
+
+[tool.setuptools.packages.find]
+where = ["src"]

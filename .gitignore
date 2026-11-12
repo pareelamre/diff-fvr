@@ -1,0 +1,24 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Virtual environments
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Model weights / checkpoints
+*.pth
+*.pt
+*.bin
+*.onnx
+
+# Large compressed archives
+*.zip
+data/nct_pivots/
