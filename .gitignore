@@ -22,6 +22,7 @@ wheels/
 # Large compressed archives
 *.zip
 data/nct_pivots/
+data/deepfluoro/
 
 *.bundle
 
