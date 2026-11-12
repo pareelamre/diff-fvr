@@ -24,3 +24,7 @@ wheels/
 data/nct_pivots/
 
 *.bundle
+
+main.tex
+package_submission_bundle.py
+outputs/submission_bundle/

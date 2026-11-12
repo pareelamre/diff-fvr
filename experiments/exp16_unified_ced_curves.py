@@ -7,7 +7,7 @@ Synthesizes registration performance across 3 completely independent clinical sc
   3. AMOS Abdominal CT Cohort (NCT Dresden baseline, 90 slices, 0.57 mm spacing)
   + Baselines: Monoplanar FVR, Unmasked Metal Occlusion, Uncalibrated Cone-Beam.
 
-Produces a publication-grade, multi-panel figure for IEEE TMI / MedIA.
+Produces a publication-grade, multi-panel benchmark figure.
 """
 
 import sys
