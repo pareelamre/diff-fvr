@@ -31,7 +31,8 @@ from scipy import fft
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.fvr.dicom_loader import load_dicom_series, hu_to_attenuation
+from src.fvr.dicom_loader import resample_isotropic_cube, load_dicom_series, hu_to_attenuation
+from src.fvr.registration_3d2d import compute_mtre_6dof
 from src.fvr.articulated_spine import VertebralSegment, ArticulatedSpineModel
 from src.fvr.core_engine import detect_radio_opaque_metal
 
@@ -84,10 +85,8 @@ def run_articulated_instrumented_benchmark():
     vox_size = phys_x / target_xy
     target_z = int(round(phys_z / vox_size))
 
-    vol_iso = zoom(vol_hu, (target_z / vol_hu.shape[0], target_xy / vol_hu.shape[1], target_xy / vol_hu.shape[2]), order=1)
-    pad_z_before = (target_xy - target_z) // 2
-    pad_z_after = target_xy - target_z - pad_z_before
-    vol_cubic = np.pad(vol_iso, ((pad_z_before, pad_z_after), (0, 0), (0, 0)), mode='constant', constant_values=-1000.0)
+    vol_cubic, grid_spacing = resample_isotropic_cube(vol_hu, spacing, target_xy)
+    vox_size = grid_spacing[0]
     volume = hu_to_attenuation(vol_cubic)
 
     nz, ny, nx = volume.shape
@@ -132,8 +131,8 @@ def run_articulated_instrumented_benchmark():
     t_lat_norm = (t_lat_valid - np.mean(t_lat_valid)) / (np.std(t_lat_valid) + 1e-8)
 
     init_base_pose = np.array([2.0, -1.5, 1.2, 2.5, -2.0, 2.0])
-    init_err = np.linalg.norm(init_base_pose[3:])
-    print(f"Initial Misalignment: {init_base_pose}, Translation Error: {init_err:.2f} mm")
+    init_err = compute_mtre_6dof(gt_base_pose, init_base_pose, volume.shape, spacing=(vox_size,) * 3)
+    print(f"Initial Misalignment: {init_base_pose}, Base mTRE: {init_err:.2f} mm")
 
     records = []
 
@@ -154,7 +153,7 @@ def run_articulated_instrumented_benchmark():
     t0 = time.time()
     res_m1 = minimize(obj_naive_rigid, x0=init_base_pose, method='Powell', options={'maxiter': 20, 'ftol': 1e-4})
     t_m1 = time.time() - t0
-    err_m1 = np.linalg.norm(res_m1.x[3:] - gt_base_pose[3:])
+    err_m1 = compute_mtre_6dof(gt_base_pose, res_m1.x, volume.shape, spacing=(vox_size,) * 3)
     print(f"  Naive Rigid Result: mTRE={err_m1:.3f} mm, Loss={res_m1.fun:.5f}, Time={t_m1:.2f}s")
     records.append({
         'Pipeline': 'Naive Rigid (Unmasked)',
@@ -183,7 +182,7 @@ def run_articulated_instrumented_benchmark():
     t0 = time.time()
     res_m2 = minimize(obj_masked_rigid, x0=init_base_pose, method='Powell', options={'maxiter': 20, 'ftol': 1e-4})
     t_m2 = time.time() - t0
-    err_m2 = np.linalg.norm(res_m2.x[3:] - gt_base_pose[3:])
+    err_m2 = compute_mtre_6dof(gt_base_pose, res_m2.x, volume.shape, spacing=(vox_size,) * 3)
     print(f"  Masked Rigid Result: mTRE={err_m2:.3f} mm, Loss={res_m2.fun:.5f}, Time={t_m2:.2f}s")
     records.append({
         'Pipeline': 'Masked Rigid (No Articulation)',
@@ -221,7 +220,7 @@ def run_articulated_instrumented_benchmark():
 
     res_stage2 = minimize(obj_joint_refine, x0=[0.0, 0.0], method='Powell', options={'maxiter': 15, 'ftol': 1e-4})
     t_m3 = time.time() - t0
-    err_m3 = np.linalg.norm(base_aligned[3:] - gt_base_pose[3:])
+    err_m3 = compute_mtre_6dof(gt_base_pose, base_aligned, volume.shape, spacing=(vox_size,) * 3)
     est_pitch_l4 = res_stage2.x[0]
     est_pitch_l3 = res_stage2.x[1]
     err_pitch_l4 = abs(est_pitch_l4 - gt_art_l4[1])
@@ -244,6 +243,8 @@ def run_articulated_instrumented_benchmark():
     })
 
     df = pd.DataFrame(records)
+    df['Metric_units'] = 'mm'
+    df['Target_type'] = 'synthetic_same_renderer'
     df.to_csv(csv_path, index=False)
     print(f"\nSaved benchmark CSV to: {csv_path}")
 

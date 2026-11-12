@@ -1,3 +1,5 @@
+"""One CT source volume, 20 poses, same-renderer synthetic targets; no acquired fluoroscopy."""
+
 import os
 import sys
 import time
@@ -11,7 +13,7 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(line_buffering=True)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from fvr.dicom_loader import load_dicom_series, hu_to_attenuation
+from fvr.dicom_loader import resample_isotropic_cube, load_dicom_series, hu_to_attenuation
 from fvr.diff_fvr import DifferentiableFourierVolumeRenderer
 from fvr.registration_3d2d import BiplanarSpineRegistrationEngine, compute_mtre_6dof
 
@@ -42,14 +44,8 @@ def run_kaggle_benchmark():
     phys_x = vol_hu.shape[2] * dx
 
     target_xy = 96
-    vox_size = phys_x / target_xy
-    target_z = int(round(phys_z / vox_size))
-
-    vol_iso = zoom(vol_hu, (target_z / vol_hu.shape[0], target_xy / vol_hu.shape[1], target_xy / vol_hu.shape[2]), order=1)
-    pad_z_before = (target_xy - target_z) // 2
-    pad_z_after = target_xy - target_z - pad_z_before
-    vol_cubic = np.pad(vol_iso, ((pad_z_before, pad_z_after), (0, 0), (0, 0)), mode='constant', constant_values=-1000.0)
-
+    vol_cubic, grid_spacing = resample_isotropic_cube(vol_hu, spacing, target_xy)
+    vox_size = grid_spacing[0]
     vol_mu = hu_to_attenuation(vol_cubic)
     renderer = DifferentiableFourierVolumeRenderer(vol_mu, pad_factor=2.0)
     engine = BiplanarSpineRegistrationEngine(renderer)
@@ -69,7 +65,7 @@ def run_kaggle_benchmark():
         true_pose = (yaw, pitch, roll, tx, ty, tz)
 
         init_pose = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-        init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape)
+        init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape, spacing=(vox_size,) * 3)
 
         target_ap_clean = renderer.render_drr(yaw, pitch, roll, tx=tx, ty=tz, view='ap')
         target_lat_clean = renderer.render_drr(yaw, pitch, roll, tx=ty, ty=tz, view='lateral')
@@ -81,11 +77,11 @@ def run_kaggle_benchmark():
         t0 = time.time()
         res_clean = engine.register_biplanar(target_ap_clean, target_lat_clean, initial_pose=init_pose, max_iter=70)
         t_clean = time.time() - t0
-        mtre_clean = compute_mtre_6dof(true_pose, res_clean['estimated_pose'], vol_mu.shape)
+        mtre_clean = compute_mtre_6dof(true_pose, res_clean['estimated_pose'], vol_mu.shape, spacing=(vox_size,) * 3)
 
         records.append({
             'Dataset': 'Kaggle Clinical Lumbar CT',
-            'Condition': 'Clean (Standard Dose)',
+            'Condition': 'Clean (Synthetic)',
             'Trial': trial,
             'Init_mTRE_mm': init_mtre,
             'Final_mTRE_mm': mtre_clean,
@@ -99,7 +95,7 @@ def run_kaggle_benchmark():
         t0 = time.time()
         res_noisy = engine.register_biplanar(target_ap_noisy, target_lat_noisy, initial_pose=init_pose, max_iter=70)
         t_noisy = time.time() - t0
-        mtre_noisy = compute_mtre_6dof(true_pose, res_noisy['estimated_pose'], vol_mu.shape)
+        mtre_noisy = compute_mtre_6dof(true_pose, res_noisy['estimated_pose'], vol_mu.shape, spacing=(vox_size,) * 3)
 
         records.append({
             'Dataset': 'Kaggle Clinical Lumbar CT',
@@ -117,6 +113,8 @@ def run_kaggle_benchmark():
             print(f"  Trial {trial+1:2d}/{n_trials} | Clean: {mtre_clean:.3f} mm | Low-Dose: {mtre_noisy:.3f} mm")
 
     df = pd.DataFrame(records)
+    df['Metric_units'] = 'mm'
+    df['Target_type'] = 'synthetic_same_renderer'
     csv_path = out_dir / "table12_kaggle_clinical_benchmark.csv"
     df.to_csv(csv_path, index=False)
     print(f"\nSaved Kaggle benchmark to: {csv_path}")
@@ -165,7 +163,7 @@ def run_kaggle_benchmark():
 
     ax_ced = fig.add_subplot(gs[1, 2])
     th_range = np.linspace(0.0, 4.0, 80)
-    clean_grp = df[df['Condition'] == 'Clean (Standard Dose)']
+    clean_grp = df[df['Condition'] == 'Clean (Synthetic)']
     noisy_grp = df[df['Condition'] == 'Low-Dose Fluoroscopy']
 
     clean_rates = [np.mean(clean_grp['Final_mTRE_mm'] <= t) * 100 for t in th_range]

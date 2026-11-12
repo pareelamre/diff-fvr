@@ -27,7 +27,7 @@ from scipy import fft
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.fvr.dicom_loader import load_dicom_series, hu_to_attenuation
+from src.fvr.dicom_loader import resample_isotropic_cube, load_dicom_series, hu_to_attenuation
 from src.fvr.diff_fvr import DifferentiableFourierVolumeRenderer
 from src.fvr.registration_3d2d import compute_mtre_6dof
 
@@ -90,10 +90,8 @@ def run_fov_truncation_benchmark():
     vox_size = phys_x / target_xy
     target_z = int(round(phys_z / vox_size))
 
-    vol_iso = zoom(vol_hu, (target_z / vol_hu.shape[0], target_xy / vol_hu.shape[1], target_xy / vol_hu.shape[2]), order=1)
-    pad_z_before = (target_xy - target_z) // 2
-    pad_z_after = target_xy - target_z - pad_z_before
-    vol_cubic = np.pad(vol_iso, ((pad_z_before, pad_z_after), (0, 0), (0, 0)), mode='constant', constant_values=-1000.0)
+    vol_cubic, grid_spacing = resample_isotropic_cube(vol_hu, spacing, target_xy)
+    vox_size = grid_spacing[0]
     vol_mu = hu_to_attenuation(vol_cubic)
 
     renderer = DifferentiableFourierVolumeRenderer(vol_mu, pad_factor=2.0)
@@ -101,7 +99,7 @@ def run_fov_truncation_benchmark():
 
     true_pose = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     init_pose = (2.0, -1.5, 1.2, 3.0, -2.0, 2.5)
-    init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape)
+    init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape, spacing=(vox_size,) * 3)
     print(f"Ground-truth pose: {true_pose}")
     print(f"Initial Misalignment: {init_pose}, Initial mTRE: {init_mtre:.2f} mm")
 
@@ -145,7 +143,7 @@ def run_fov_truncation_benchmark():
         t0 = time.time()
         res_base = minimize(obj_baseline, x0=np.array(init_pose), method='Powell', options={'maxiter': 20, 'ftol': 1e-4})
         t_base = time.time() - t0
-        mtre_base = compute_mtre_6dof(true_pose, tuple(res_base.x), vol_mu.shape)
+        mtre_base = compute_mtre_6dof(true_pose, tuple(res_base.x), vol_mu.shape, spacing=(vox_size,) * 3)
         print(f"  Unwindowed Baseline: mTRE = {mtre_base:.4f} mm, Loss = {res_base.fun:.5f}, Time = {t_base:.2f}s")
 
         # Proposed: Tukey Tapered Boundary Anti-Aliasing
@@ -170,7 +168,7 @@ def run_fov_truncation_benchmark():
         t0 = time.time()
         res_taper = minimize(obj_tapered, x0=np.array(init_pose), method='Powell', options={'maxiter': 20, 'ftol': 1e-4})
         t_taper = time.time() - t0
-        mtre_taper = compute_mtre_6dof(true_pose, tuple(res_taper.x), vol_mu.shape)
+        mtre_taper = compute_mtre_6dof(true_pose, tuple(res_taper.x), vol_mu.shape, spacing=(vox_size,) * 3)
         print(f"  Tukey Tapered Engine: mTRE = {mtre_taper:.4f} mm, Loss = {res_taper.fun:.5f}, Time = {t_taper:.2f}s")
 
         records.append({
@@ -186,6 +184,8 @@ def run_fov_truncation_benchmark():
         })
 
     df = pd.DataFrame(records)
+    df['Metric_units'] = 'mm'
+    df['Target_type'] = 'synthetic'
     csv_path = OUTPUT_DIR / "table17_fov_truncation.csv"
     df.to_csv(csv_path, index=False)
     print(f"\nSaved benchmark CSV to: {csv_path}")

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "diff-fvr"
 version = "1.0.0"
-description = "Dual-Domain Differentiable Fourier Volume Rendering for Ultra-Fast Biplanar 3D-2D Spine Registration"
+description = "Research parallel-beam Fourier volume rendering and biplanar 3D-2D registration"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -21,7 +21,7 @@ keywords = [
     "image-guided-interventions"
 ]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
     "Programming Language :: Python :: 3",

@@ -112,11 +112,22 @@ class BiplanarSpineRegistrationEngine:
 def compute_mtre_6dof(
     true_pose: Tuple[float, float, float, float, float, float],
     est_pose: Tuple[float, float, float, float, float, float],
-    volume_shape: Tuple[int, int, int]
+    volume_shape: Tuple[int, int, int],
+    spacing: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+    translation_units: str = 'voxels'
 ) -> float:
     """
-    Compute 6-DoF Mean Target Registration Error (mTRE) on 8 vertebral landmarks.
+    Return mTRE in mm on eight synthetic volume landmarks, not anatomical labels.
+
+    spacing is (Z, Y, X) in mm. Legacy renderers and registration engines use
+    voxel translations; RobustDiffFVREngine uses translation_units='mm'.
+    The default spacing assumes one mm per voxel; pass measured spacing for CT.
     """
+    spacing = np.asarray(spacing, dtype=float)
+    if spacing.shape != (3,) or not np.all(np.isfinite(spacing)) or np.any(spacing <= 0):
+        raise ValueError('spacing must contain three finite positive values in mm.')
+    if translation_units not in ('voxels', 'mm'):
+        raise ValueError("translation_units must be 'voxels' or 'mm'.")
     nz, ny, nx = volume_shape
     cz, cy, cx = nz / 2.0, ny / 2.0, nx / 2.0
     r = min(nz, ny, nx) * 0.25
@@ -154,7 +165,10 @@ def compute_mtre_6dof(
             [0.0,            0.0,           1.0]
         ])
         rot = rz @ ry @ rx
-        return (pts - np.array([cz, cy, cx])) @ rot.T + np.array([cz + tz, cy + ty, cx + tx])
+        translation = np.array([tz, ty, tx])
+        if translation_units == 'voxels':
+            translation = translation * spacing
+        return ((pts - np.array([cz, cy, cx])) * spacing) @ rot.T + translation
 
     pts_true = transform_pts(corners, true_pose)
     pts_est = transform_pts(corners, est_pose)

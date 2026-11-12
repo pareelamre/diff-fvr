@@ -1,13 +1,9 @@
 """
-Experiment 16: Unified Multi-Center Cumulative Error Distribution (CED) Benchmark.
+Experiment 16: CED summary of synthetic projection registration experiments.
 
-Synthesizes registration performance across 3 completely independent clinical scanner cohorts:
-  1. Hospital Patient DICOM CT (28 slices, 0.49 mm isotropic matrix)
-  2. Multi-Center Kaggle Lumbar CT (100 slices, 1.0 mm clinical spacing)
-  3. AMOS Abdominal CT Cohort (NCT Dresden baseline, 90 slices, 0.57 mm spacing)
-  + Baselines: Monoplanar FVR, Unmasked Metal Occlusion, Uncalibrated Cone-Beam.
-
-Produces a publication-grade, multi-panel benchmark figure.
+The three CT-derived datasets each use one source volume and randomized poses.
+This summary is not acquired-fluoroscopy or multi-patient clinical validation.
+Only explicitly unit-verified tables may be aggregated; regenerate older files.
 """
 
 import sys
@@ -15,7 +11,6 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -29,13 +24,24 @@ def compute_ced(errors: np.ndarray, thresholds: np.ndarray) -> np.ndarray:
     return np.array([np.mean(errors <= tau) * 100.0 for tau in thresholds])
 
 
+def load_metric_table(path):
+    """Refuse legacy voxel errors that were labeled as physical mm."""
+    frame = pd.read_csv(path)
+    if frame.empty or 'Metric_units' not in frame or not frame['Metric_units'].eq('mm').all():
+        raise ValueError(f'{path}: unverified metric units; regenerate the source experiment.')
+    errors = frame['Final_mTRE_mm'].to_numpy(dtype=float)
+    if not np.all(np.isfinite(errors)) or np.any(errors < 0):
+        raise ValueError(f'{path}: mTRE must contain finite nonnegative values.')
+    return frame
+
+
 def generate_unified_ced_benchmark():
     print("Generating Unified Multi-Center Cumulative Error Distribution (CED) Benchmark...")
 
     # Load datasets
-    df_dicom = pd.read_csv(OUTPUT_DIR / "table7_clinical_benchmark.csv")
-    df_kaggle = pd.read_csv(OUTPUT_DIR / "table12_kaggle_clinical_benchmark.csv")
-    df_amos = pd.read_csv(OUTPUT_DIR / "table13_amos_clinical_benchmark.csv")
+    df_dicom = load_metric_table(OUTPUT_DIR / "table7_clinical_benchmark.csv")
+    df_kaggle = load_metric_table(OUTPUT_DIR / "table12_kaggle_clinical_benchmark.csv")
+    df_amos = load_metric_table(OUTPUT_DIR / "table13_amos_clinical_benchmark.csv")
 
     # Extract clean and low-dose errors
     dicom_clean = df_dicom[df_dicom['Condition'].str.contains('Clean')]['Final_mTRE_mm'].values
@@ -48,15 +54,12 @@ def generate_unified_ced_benchmark():
     amos_noisy = df_amos[df_amos['Condition'].str.contains('Low-Dose')]['Final_mTRE_mm'].values
 
     # Baselines for comparison
-    df_biplanar = pd.read_csv(OUTPUT_DIR / "table6_biplanar_benchmark.csv")
+    df_biplanar = load_metric_table(OUTPUT_DIR / "table6_biplanar_benchmark.csv")
     monoplanar_errors = df_biplanar[df_biplanar['Method'].str.contains('Monoplanar')]['Final_mTRE_mm'].values
 
-    # Unmasked metal failure baseline (mean ~25-49 mm)
-    try:
-        df_metal = pd.read_csv(OUTPUT_DIR / "table10_metal_occlusion.csv")
-        metal_unmasked = df_metal[df_metal['Hardware_Type'].str.contains('Both|Screws|Retractor')]['Final_mTRE_mm'].values
-    except Exception:
-        metal_unmasked = np.array([24.5, 49.15, 32.1, 18.5, 28.0])
+    # Baseline data is required; do not substitute invented observations.
+    df_metal = load_metric_table(OUTPUT_DIR / "table10_metal_occlusion.csv")
+    metal_unmasked = df_metal[df_metal['Hardware_Type'].str.contains('Both|Screws|Retractor')]['Final_mTRE_mm'].values
 
     # Plot Setup
     plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')

@@ -11,45 +11,34 @@ from pathlib import Path
 import time
 import numpy as np
 from PIL import Image
-from scipy.ndimage import zoom
-
-from .dicom_loader import load_dicom_series, hu_to_attenuation
-from .diff_fvr import DifferentiableFourierVolumeRenderer
+from .dicom_loader import load_dicom_series, hu_to_attenuation, resample_isotropic_cube
 from .core_engine import RobustDiffFVREngine
 
 
-def load_volume(ct_path: Path, target_res: int = 96):
+def load_volume(ct_path: Path, target_res: int = 96, spacing_mm=None):
     """
-    Load CT from DICOM directory or numpy array, with isotropic cubic resampling.
+    Return (attenuation volume, spacing_zyx_mm) on an isotropic cubic grid.
+    DICOM spacing comes from the series; NPY defaults to one mm per voxel.
     """
     if ct_path.is_dir():
+        if spacing_mm is not None:
+            raise ValueError('--spacing-mm is for NPY input; DICOM uses its metadata.')
         vol_hu, spacing = load_dicom_series(ct_path)
-    elif ct_path.suffix in ['.npy', '.npz']:
-        vol_hu = np.load(ct_path)
-        spacing = (1.0, 1.0, 1.0)
+    elif ct_path.suffix == '.npy':
+        vol_hu = np.load(ct_path, allow_pickle=False)
+        spacing = (1.0, 1.0, 1.0) if spacing_mm is None else spacing_mm
     else:
         raise ValueError(f"Unsupported CT path: {ct_path}. Must be a DICOM directory or .npy file.")
 
-    if target_res is not None and vol_hu.shape[1] != target_res:
-        target_xy = target_res
-        phys_z = vol_hu.shape[0] * spacing[0]
-        phys_x = vol_hu.shape[2] * spacing[2]
-        vox_size = phys_x / target_xy
-        target_z = int(round(phys_z / vox_size))
-
-        vol_iso = zoom(vol_hu, (target_z / vol_hu.shape[0], target_xy / vol_hu.shape[1], target_xy / vol_hu.shape[2]), order=1)
-        pad_z_before = (target_xy - target_z) // 2
-        pad_z_after = target_xy - target_z - pad_z_before
-        vol_cubic = np.pad(vol_iso, ((pad_z_before, pad_z_after), (0, 0), (0, 0)), mode='constant', constant_values=-1000.0)
-    else:
-        vol_cubic = vol_hu
-
-    return hu_to_attenuation(vol_cubic)
+    vol_cubic, spacing = resample_isotropic_cube(vol_hu, spacing, target_res)
+    return hu_to_attenuation(vol_cubic), spacing
 
 
 def main_render():
-    parser = argparse.ArgumentParser(description="Diff-FVR: Ultra-fast Digitally Reconstructed Radiograph (DRR) Renderer.")
+    parser = argparse.ArgumentParser(description="Diff-FVR: research parallel-beam DRR renderer (no cone-beam calibration).")
     parser.add_argument("--ct", type=str, required=True, help="Path to pre-op CT DICOM directory or .npy file.")
+    parser.add_argument('--spacing-mm', type=float, nargs=3, metavar=('Z', 'Y', 'X'),
+                        help='NPY voxel spacing in mm (default: 1 1 1). DICOM uses metadata.')
     parser.add_argument("--yaw", type=float, default=0.0, help="Rotation yaw in degrees (default: 0.0).")
     parser.add_argument("--pitch", type=float, default=0.0, help="Rotation pitch in degrees (default: 0.0).")
     parser.add_argument("--roll", type=float, default=0.0, help="Rotation roll in degrees (default: 0.0).")
@@ -64,17 +53,22 @@ def main_render():
 
     ct_path = Path(args.ct)
     if not ct_path.exists():
-        print(f"Error: CT path not found: {ct_path}")
-        return
+        parser.error(f'CT path not found: {ct_path}')
 
     print(f"Loading CT from: {ct_path} (resampling to {args.res}^3)...")
     t0 = time.time()
-    vol_mu = load_volume(ct_path, target_res=args.res)
-    renderer = DifferentiableFourierVolumeRenderer(vol_mu, pad_factor=2.0)
+    try:
+        vol_mu, spacing = load_volume(ct_path, target_res=args.res, spacing_mm=args.spacing_mm)
+    except ValueError as exc:
+        parser.error(str(exc))
+    engine = RobustDiffFVREngine(vol_mu, spacing=spacing, pad_factor=2.0)
+    print(f'Parallel-beam grid: {spacing[0]:.6g} mm/pixel; rotations in degrees, translations in mm.')
     print(f"Initialized 3D FFT volume in {time.time() - t0:.2f} s.")
 
     t_render = time.perf_counter()
-    drr = renderer.render_drr(args.yaw, args.pitch, args.roll, tx=args.tx, ty=args.ty, view=args.view)
+    horizontal_mm = args.tx if args.view == 'ap' else args.ty
+    drr = engine.render_calibrated_drr(args.yaw, args.pitch, args.roll,
+                                       tx=horizontal_mm, ty=args.tz, view=args.view)
     render_ms = (time.perf_counter() - t_render) * 1000.0
 
     print(f"Rendered {args.view.upper()} DRR in {render_ms:.2f} ms ({1000.0 / render_ms:.1f} FPS)!")
@@ -89,8 +83,11 @@ def main_render():
 
 
 def main_register():
-    parser = argparse.ArgumentParser(description="Diff-FVR: Biplanar 3D-2D 6-DoF Rigid Spine Registration.")
+    parser = argparse.ArgumentParser(description='Diff-FVR: research parallel-beam biplanar registration. '
+                                    'Targets must match the rendered grid; acquired cone-beam images are unsupported.')
     parser.add_argument("--ct", type=str, required=True, help="Path to pre-op CT DICOM directory or .npy file.")
+    parser.add_argument('--spacing-mm', type=float, nargs=3, metavar=('Z', 'Y', 'X'),
+                        help='NPY voxel spacing in mm (default: 1 1 1). DICOM uses metadata.')
     parser.add_argument("--ap", type=str, required=True, help="Path to target intraoperative AP X-ray (PNG/TIFF/NPY).")
     parser.add_argument("--lat", type=str, required=True, help="Path to target intraoperative Lateral X-ray.")
     parser.add_argument("--res", type=int, default=96, help="Isotropic CT grid dimension (default: 96).")
@@ -105,13 +102,12 @@ def main_register():
     lat_path = Path(args.lat)
 
     if not ct_path.exists() or not ap_path.exists() or not lat_path.exists():
-        print(f"Error: One or more input paths do not exist:\n  CT: {ct_path}\n  AP: {ap_path}\n  LAT: {lat_path}")
-        return
+        parser.error(f'One or more input paths do not exist: {ct_path}, {ap_path}, {lat_path}')
 
     # Load targets
     def load_img(p: Path):
         if p.suffix == '.npy':
-            return np.load(p)
+            return np.load(p, allow_pickle=False)
         im = Image.open(p).convert('L')
         return np.array(im, dtype=np.float64)
 
@@ -119,8 +115,12 @@ def main_register():
     targ_lat = load_img(lat_path)
 
     print(f"Loading and initializing CT from: {ct_path}...")
-    vol_mu = load_volume(ct_path, target_res=args.res)
-    engine = RobustDiffFVREngine(vol_mu, pad_factor=2.0)
+    try:
+        vol_mu, spacing = load_volume(ct_path, target_res=args.res, spacing_mm=args.spacing_mm)
+    except ValueError as exc:
+        parser.error(str(exc))
+    engine = RobustDiffFVREngine(vol_mu, spacing=spacing, pad_factor=2.0)
+    print(f'Parallel-beam target grid: {spacing[0]:.6g} mm/pixel; expected image shape {vol_mu.shape[:2]}.')
 
     print(f"Running Biplanar 6-DoF Registration (handle_metal={args.handle_metal}, max_iter={args.max_iter})...")
     res = engine.register_biplanar_robust(
@@ -131,12 +131,16 @@ def main_register():
     )
 
     pose = res['final_pose']
-    print(f"\nREGISTRATION CONVERGED in {res['time_sec']:.2f} s ({res['evaluations']} evaluations):")
+    status = 'CONVERGED' if res['success'] else 'DID NOT CONVERGE'
+    print(f"\nREGISTRATION {status} in {res['time_sec']:.2f} s ({res['evaluations']} evaluations):")
     print(f"  Rotation:    Yaw={pose[0]:.3f}°, Pitch={pose[1]:.3f}°, Roll={pose[2]:.3f}°")
     print(f"  Translation: Tx={pose[3]:.3f} mm, Ty={pose[4]:.3f} mm, Tz={pose[5]:.3f} mm")
     print(f"  Final Loss:  {res['final_loss']:.6f}")
 
     out_data = {
+        'success': bool(res['success']),
+        'projection_model': 'parallel_beam',
+        'voxel_spacing_zyx_mm': list(spacing),
         'yaw_deg': float(pose[0]),
         'pitch_deg': float(pose[1]),
         'roll_deg': float(pose[2]),
@@ -154,6 +158,8 @@ def main_register():
     with open(out_path, 'w', encoding='utf-8') as f:
         json.dump(out_data, f, indent=2)
     print(f"Saved results to: {out_path.resolve()}")
+    if not res['success']:
+        parser.exit(1, 'Optimizer did not converge; result saved with success=false.\n')
 
 
 if __name__ == '__main__':

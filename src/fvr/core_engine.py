@@ -1,9 +1,9 @@
 """
-Core Production Engine for Robust Differentiable Fourier Volume Rendering (Diff-FVR).
+Research engine for parallel-beam Differentiable Fourier Volume Rendering.
 
 Integrates:
   1. 3D Anti-Aliased Fourier Projection-Slice Theorem with 1:1 Physical Scale.
-  2. Isocenter Geometric Calibration for C-Arm Cone-Beam Perspective (SAD/SDD).
+  2. Physical translations on an isotropic voxel grid (millimetres at this API).
   3. Automatic Radio-Opaque Metal Saturated Hardware Detection (>3% threshold).
   4. Active Masked Spatial Loss on Unoccluded Bone Pixels during Metal Occlusion.
   5. Ultra-Fast Frequency-Domain Spectral-NCC under Clean/Low-Dose Fluoroscopy.
@@ -29,7 +29,12 @@ def detect_radio_opaque_metal(img: np.ndarray, saturation_threshold: float = 0.9
 
 class RobustDiffFVREngine:
     """
-    Unified Production Registration Framework for Image-Guided Spine Surgery.
+    Parallel-beam registration on a cubic, isotropic volume.
+
+    Spacing is (Z, Y, X) in mm; poses are (yaw, pitch, roll, tx, ty, tz),
+    with rotations in degrees and translations in mm. Target pixels must have
+    the same spacing, orientation and field of view as the rendered projections.
+    Cone-beam calibration and arbitrary acquired fluoroscopy are not supported.
     """
 
     def __init__(
@@ -37,14 +42,22 @@ class RobustDiffFVREngine:
         volume: np.ndarray,
         spacing: Tuple[float, float, float] = (1.0, 1.0, 1.0),
         pad_factor: float = 2.0,
-        sdd_mm: float = 1000.0,
-        sad_mm: float = 750.0
+        sdd_mm: Optional[float] = None,
+        sad_mm: Optional[float] = None
     ):
+        if sdd_mm is not None or sad_mm is not None:
+            raise ValueError('Only parallel-beam geometry is supported; SDD/SAD calibration is not implemented.')
+        spacing = np.asarray(spacing, dtype=float)
+        if spacing.shape != (3,) or not np.all(np.isfinite(spacing)) or np.any(spacing <= 0):
+            raise ValueError('spacing must contain three finite positive values in mm (Z, Y, X).')
+        if not np.allclose(spacing, spacing[0], rtol=1e-6, atol=0):
+            raise ValueError('Resample the volume to isotropic spacing before registration.')
+        if volume.ndim != 3 or len(set(volume.shape)) != 1 or min(volume.shape) < 2:
+            raise ValueError('Use a cubic 3D volume with at least two voxels per axis.')
+        if not np.all(np.isfinite(volume)):
+            raise ValueError('volume must contain only finite values.')
         self.volume = volume.astype(np.float64)
-        self.spacing = spacing
-        self.sdd = sdd_mm
-        self.sad = sad_mm
-        self.mag_factor = self.sdd / self.sad  # Typically 1.33x - 1.45x
+        self.spacing = tuple(spacing)
 
         # Initialize base Fourier Volume Renderer
         self.renderer = DifferentiableFourierVolumeRenderer(
@@ -81,9 +94,16 @@ class RobustDiffFVREngine:
         view: str = 'lateral',
         crop_to_roi: bool = True
     ) -> np.ndarray:
+        """Render a parallel-beam DRR; legacy name, no perspective calibration.
+
+        tx and ty are horizontal and vertical translations in mm in this view.
+        """
+        if view not in ('ap', 'lateral', 'axial'):
+            raise ValueError('view must be ap, lateral or axial.')
         return self.renderer.render_drr(
             yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll,
-            tx=tx, ty=ty, view=view, crop_to_roi=crop_to_roi
+            tx=tx / self.spacing[0], ty=ty / self.spacing[0],
+            view=view, crop_to_roi=crop_to_roi
         )
 
     def register_biplanar_robust(
@@ -97,10 +117,23 @@ class RobustDiffFVREngine:
         bounds_rot_deg: float = 20.0
     ) -> Dict[str, Any]:
         """
-        Execute robust 6-DoF biplanar registration:
+        Execute parallel-beam 6-DoF registration, translations and bounds in mm:
           - If metal hardware detected (>3% saturation), activates Masked Spatial Loss.
-          - Otherwise, runs ultra-fast Spectral-NCC (1.38 ms/eval).
+          - Otherwise, runs Spectral-NCC.
         """
+        for name, target in (('AP', target_ap), ('lateral', target_lat)):
+            if target.shape != self.volume.shape[:2] or not np.all(np.isfinite(target)):
+                raise ValueError(f'{name} target must be finite with shape {self.volume.shape[:2]}; '
+                                 'match the parallel-beam projection grid before registration.')
+            if np.ptp(target) == 0:
+                raise ValueError(f'{name} target must contain intensity variation for registration.')
+        initial_pose = np.asarray(initial_pose, dtype=float)
+        if initial_pose.shape != (6,) or not np.all(np.isfinite(initial_pose)):
+            raise ValueError('initial_pose must contain six finite values.')
+        if not np.all(np.isfinite([bounds_trans_mm, bounds_rot_deg])) or min(bounds_trans_mm, bounds_rot_deg) <= 0:
+            raise ValueError('Translation and rotation bounds must be finite and positive.')
+        if max_iter < 1:
+            raise ValueError('max_iter must be positive.')
         t0 = time.time()
         eval_count = 0
 
@@ -133,6 +166,7 @@ class RobustDiffFVREngine:
                 nonlocal eval_count
                 eval_count += 1
                 yaw, pitch, roll, tx, ty, tz = p
+                tx, ty, tz = np.array([tx, ty, tz]) / self.spacing[0]
                 drr_ap = self.renderer.render_drr(yaw, pitch, roll, tx=tx, ty=tz, view='ap')
                 drr_lat = self.renderer.render_drr(yaw, pitch, roll, tx=ty, ty=tz, view='lateral')
 
@@ -162,6 +196,7 @@ class RobustDiffFVREngine:
                 nonlocal eval_count
                 eval_count += 1
                 yaw, pitch, roll, tx, ty, tz = p
+                tx, ty, tz = np.array([tx, ty, tz]) / self.spacing[0]
                 f_cand_ap = self.renderer.extract_frequency_slice(yaw, pitch, roll, tx=tx, ty=tz, view='ap')
                 f_cand_lat = self.renderer.extract_frequency_slice(yaw, pitch, roll, tx=ty, ty=tz, view='lateral')
 

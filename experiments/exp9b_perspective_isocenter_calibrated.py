@@ -12,7 +12,7 @@ if hasattr(sys.stdout, 'reconfigure'):
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from fvr.dicom_loader import load_dicom_series, hu_to_attenuation
+from fvr.dicom_loader import resample_isotropic_cube, load_dicom_series, hu_to_attenuation
 from fvr.diff_fvr import DifferentiableFourierVolumeRenderer
 from fvr.registration_3d2d import BiplanarSpineRegistrationEngine, compute_mtre_6dof
 from experiments.exp9_perspective_conebeam_stress import project_conebeam_3d, rotate_volume_3d
@@ -62,10 +62,8 @@ def run_perspective_calibrated_benchmark():
     vox_size = phys_x / target_xy
     target_z = int(round(phys_z / vox_size))
 
-    vol_iso = zoom(vol_hu, (target_z / vol_hu.shape[0], target_xy / vol_hu.shape[1], target_xy / vol_hu.shape[2]), order=1)
-    pad_z_before = (target_xy - target_z) // 2
-    pad_z_after = target_xy - target_z - pad_z_before
-    vol_cubic = np.pad(vol_iso, ((pad_z_before, pad_z_after), (0, 0), (0, 0)), mode='constant', constant_values=-1000.0)
+    vol_cubic, grid_spacing = resample_isotropic_cube(vol_hu, spacing, target_xy)
+    vox_size = grid_spacing[0]
 
     vol_mu = hu_to_attenuation(vol_cubic)
     renderer = DifferentiableFourierVolumeRenderer(vol_mu, pad_factor=2.0)
@@ -97,7 +95,7 @@ def run_perspective_calibrated_benchmark():
             true_pose = (yaw, pitch, roll, tx, ty, tz)
 
             init_pose = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-            init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape)
+            init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape, spacing=(vox_size,) * 3)
 
             # Ground truth Cone-Beam projection
             rot_vol = rotate_volume_3d(vol_mu, yaw, pitch, roll, tx, ty, tz)
@@ -115,7 +113,7 @@ def run_perspective_calibrated_benchmark():
             res = engine.register_biplanar(target_ap_norm, target_lat_norm, initial_pose=init_pose, max_iter=75)
             t_reg = time.time() - t0
 
-            final_mtre = compute_mtre_6dof(true_pose, res['estimated_pose'], vol_mu.shape)
+            final_mtre = compute_mtre_6dof(true_pose, res['estimated_pose'], vol_mu.shape, spacing=(vox_size,) * 3)
 
             records.append({
                 "C_arm_Model": cfg["name"],
@@ -134,6 +132,8 @@ def run_perspective_calibrated_benchmark():
             print(f"  Trial {trial+1:2d}/{trials_per_config} | Init: {init_mtre:.2f} mm -> Final: {final_mtre:.3f} mm | Success: {final_mtre < 2.0}")
 
     df = pd.DataFrame(records)
+    df['Metric_units'] = 'mm'
+    df['Target_type'] = 'synthetic'
     csv_path = out_dir / "table9b_perspective_isocenter_calibrated.csv"
     df.to_csv(csv_path, index=False)
     print(f"\nSaved calibrated perspective results to: {csv_path}")

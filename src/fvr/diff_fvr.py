@@ -114,7 +114,8 @@ class DifferentiableFourierVolumeRenderer:
         interp_order: int = 1
     ) -> np.ndarray:
         """
-        Extract the 2D complex central frequency slice with optional in-plane translation phase shift.
+        Extract a parallel-beam frequency slice. tx/ty are in-plane VOXELS,
+        not mm. Use RobustDiffFVREngine for physical-unit translation handling.
         """
         nz, ny, nx = self.orig_shape
         if view == 'lateral':

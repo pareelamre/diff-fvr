@@ -11,7 +11,7 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(line_buffering=True)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from fvr.dicom_loader import load_dicom_series, hu_to_attenuation
+from fvr.dicom_loader import resample_isotropic_cube, load_dicom_series, hu_to_attenuation
 from fvr.diff_fvr import DifferentiableFourierVolumeRenderer
 from fvr.registration_3d2d import BiplanarSpineRegistrationEngine, compute_mtre_6dof
 
@@ -75,10 +75,8 @@ def run_metal_occlusion_stress_test():
     vox_size = phys_x / target_xy
     target_z = int(round(phys_z / vox_size))
 
-    vol_iso = zoom(vol_hu, (target_z / vol_hu.shape[0], target_xy / vol_hu.shape[1], target_xy / vol_hu.shape[2]), order=1)
-    pad_z_before = (target_xy - target_z) // 2
-    pad_z_after = target_xy - target_z - pad_z_before
-    vol_cubic = np.pad(vol_iso, ((pad_z_before, pad_z_after), (0, 0), (0, 0)), mode='constant', constant_values=-1000.0)
+    vol_cubic, grid_spacing = resample_isotropic_cube(vol_hu, spacing, target_xy)
+    vox_size = grid_spacing[0]
 
     vol_mu = hu_to_attenuation(vol_cubic)
     renderer = DifferentiableFourierVolumeRenderer(vol_mu, pad_factor=2.0)
@@ -104,7 +102,7 @@ def run_metal_occlusion_stress_test():
             true_pose = (yaw, pitch, roll, tx, ty, tz)
 
             init_pose = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-            init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape)
+            init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape, spacing=(vox_size,) * 3)
 
             target_ap = renderer.render_drr(yaw, pitch, roll, tx=tx, ty=tz, view='ap')
             target_lat = renderer.render_drr(yaw, pitch, roll, tx=ty, ty=tz, view='lateral')
@@ -121,7 +119,7 @@ def run_metal_occlusion_stress_test():
             res = engine.register_biplanar(ap_occ, lat_occ, initial_pose=init_pose, max_iter=75)
             t_reg = time.time() - t0
 
-            final_mtre = compute_mtre_6dof(true_pose, res['estimated_pose'], vol_mu.shape)
+            final_mtre = compute_mtre_6dof(true_pose, res['estimated_pose'], vol_mu.shape, spacing=(vox_size,) * 3)
 
             records.append({
                 "Occlusion_Fraction": occ,
@@ -138,6 +136,8 @@ def run_metal_occlusion_stress_test():
             print(f"  Trial {trial+1:2d}/{trials_per_level} | Init: {init_mtre:.2f} mm -> Final: {final_mtre:.3f} mm | Success: {final_mtre < 2.0}")
 
     df = pd.DataFrame(records)
+    df['Metric_units'] = 'mm'
+    df['Target_type'] = 'synthetic'
     csv_path = out_dir / "table10_metal_occlusion.csv"
     df.to_csv(csv_path, index=False)
     print(f"\nSaved metal occlusion benchmark to: {csv_path}")

@@ -8,7 +8,7 @@ import pandas as pd
 from scipy.ndimage import zoom
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from fvr.dicom_loader import load_dicom_series, hu_to_attenuation
+from fvr.dicom_loader import resample_isotropic_cube, load_dicom_series, hu_to_attenuation
 from fvr.diff_fvr import DifferentiableFourierVolumeRenderer
 from fvr.registration_3d2d import BiplanarSpineRegistrationEngine, compute_mtre_6dof
 
@@ -38,11 +38,8 @@ def run_capture_basin_sweep():
     zz = target_z / vol_hu.shape[0]
     zy = target_xy / vol_hu.shape[1]
     zx = target_xy / vol_hu.shape[2]
-    vol_iso = zoom(vol_hu, (zz, zy, zx), order=1)
-
-    pad_z_before = (target_xy - target_z) // 2
-    pad_z_after = target_xy - target_z - pad_z_before
-    vol_cubic = np.pad(vol_iso, ((pad_z_before, pad_z_after), (0, 0), (0, 0)), mode='constant', constant_values=-1000.0)
+    vol_cubic, grid_spacing = resample_isotropic_cube(vol_hu, spacing, target_xy)
+    vox_size = grid_spacing[0]
 
     vol_mu = hu_to_attenuation(vol_cubic)
     renderer = DifferentiableFourierVolumeRenderer(vol_mu, pad_factor=2.0)
@@ -64,7 +61,7 @@ def run_capture_basin_sweep():
 
     for level in perturbation_levels:
         rot_max = level["rot"]
-        trans_max = level["trans"]
+        trans_max = level["trans"] / vox_size  # Low-level poses are in voxels.
         print(f"\n--- Testing Perturbation Level: {level['name']} ({trials_per_level} trials) ---")
 
         for trial in range(trials_per_level):
@@ -77,7 +74,7 @@ def run_capture_basin_sweep():
             true_pose = (yaw, pitch, roll, tx, ty, tz)
 
             init_pose = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-            init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape)
+            init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape, spacing=(vox_size,) * 3)
 
             target_ap = renderer.render_drr(yaw, pitch, roll, tx=tx, ty=tz, view='ap')
             target_lat = renderer.render_drr(yaw, pitch, roll, tx=ty, ty=tz, view='lateral')
@@ -86,12 +83,12 @@ def run_capture_basin_sweep():
             res = engine.register_biplanar(target_ap, target_lat, initial_pose=init_pose, max_iter=80)
             t_reg = time.time() - t0
 
-            final_mtre = compute_mtre_6dof(true_pose, res['estimated_pose'], vol_mu.shape)
+            final_mtre = compute_mtre_6dof(true_pose, res['estimated_pose'], vol_mu.shape, spacing=(vox_size,) * 3)
 
             records.append({
                 "Level": level["name"],
                 "Max_Rot_deg": rot_max,
-                "Max_Trans_mm": trans_max,
+                "Max_Trans_mm": level["trans"],
                 "Trial": trial,
                 "Init_mTRE_mm": init_mtre,
                 "Final_mTRE_mm": final_mtre,
@@ -105,6 +102,8 @@ def run_capture_basin_sweep():
             print(f"  Trial {trial+1:2d}/{trials_per_level} | Init: {init_mtre:.2f} mm -> Final: {final_mtre:.3f} mm | Time: {t_reg:.2f} s")
 
     df = pd.DataFrame(records)
+    df['Metric_units'] = 'mm'
+    df['Target_type'] = 'synthetic'
     csv_path = out_dir / "table8_capture_basin.csv"
     df.to_csv(csv_path, index=False)
     print(f"\nSaved capture basin benchmark to: {csv_path}")

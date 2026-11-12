@@ -20,8 +20,9 @@ from scipy.ndimage import zoom
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.fvr.registration_3d2d import compute_mtre_6dof
 from src.fvr.articulated_spine import VertebralSegment, ArticulatedSpineModel
-from src.fvr.dicom_loader import load_dicom_series, hu_to_attenuation
+from src.fvr.dicom_loader import resample_isotropic_cube, load_dicom_series, hu_to_attenuation
 
 OUTPUT_DIR = PROJECT_ROOT / "outputs" / "paper_figures"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -43,10 +44,8 @@ def run_articulated_spine_benchmark():
     vox_size = phys_x / target_xy
     target_z = int(round(phys_z / vox_size))
 
-    vol_iso = zoom(vol_hu, (target_z / vol_hu.shape[0], target_xy / vol_hu.shape[1], target_xy / vol_hu.shape[2]), order=1)
-    pad_z_before = (target_xy - target_z) // 2
-    pad_z_after = target_xy - target_z - pad_z_before
-    vol_cubic = np.pad(vol_iso, ((pad_z_before, pad_z_after), (0, 0), (0, 0)), mode='constant', constant_values=-1000.0)
+    vol_cubic, grid_spacing = resample_isotropic_cube(vol_hu, spacing, target_xy)
+    vox_size = grid_spacing[0]
     volume = hu_to_attenuation(vol_cubic)
     print(f"Resampled isotropic cubic spine volume: {volume.shape}")
 
@@ -74,8 +73,8 @@ def run_articulated_spine_benchmark():
     gt_base_pose = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
     # Inter-vertebral flexion (patient positioned in kyphosis/flexion on surgical Wilson frame):
-    # Joint 1 (L4 w.r.t L5): +3.5 deg pitch (flexion), +1.0 mm tz
-    # Joint 2 (L3 w.r.t L4): +4.0 deg pitch (flexion), +1.2 mm tz
+    # Joint 1 (L4 w.r.t L5): +3.5 deg pitch (flexion), +1.0 voxel tz
+    # Joint 2 (L3 w.r.t L4): +4.0 deg pitch (flexion), +1.2 voxel tz
     gt_art_l4 = np.array([0.5, 3.5, -0.8, 0.5, -0.4, 1.0])
     gt_art_l3 = np.array([-0.6, 4.0, 1.0, -0.4, 0.5, 1.2])
     gt_articulations = [gt_art_l4, gt_art_l3]
@@ -89,8 +88,8 @@ def run_articulated_spine_benchmark():
 
     # Initial surgical misalignment on table:
     init_base_pose = np.array([2.5, -3.0, 1.5, 3.5, -2.5, 3.0])
-    init_base_err = np.linalg.norm(init_base_pose[3:])
-    print(f"Initial Base Misalignment: {init_base_pose}, Translation Error: {init_base_err:.2f} mm")
+    init_base_err = compute_mtre_6dof(gt_base_pose, init_base_pose, volume.shape, spacing=(vox_size,) * 3)
+    print(f"Initial Base Misalignment: {init_base_pose}, Base mTRE: {init_base_err:.2f} mm")
 
     # --- 1. Classical Monolithic Rigid Registration ---
     print("\n[Method 1] Running Monolithic Rigid Registration (No Articulation Modeling)...")
@@ -98,7 +97,7 @@ def run_articulated_spine_benchmark():
         f_target_ap, f_target_lat, init_base_pose=init_base_pose,
         max_iter_global=40, max_iter_local=0
     )
-    rigid_base_err = np.linalg.norm(res_rigid['base_pose'][3:])
+    rigid_base_err = compute_mtre_6dof(gt_base_pose, res_rigid['base_pose'], volume.shape, spacing=(vox_size,) * 3)
     print(f"Rigid Result: Base mTRE={rigid_base_err:.3f} mm, Loss={res_rigid['final_loss']:.5f}, Time={res_rigid['time_sec']:.2f}s")
 
     # --- 2. Proposed Articulated Kinematic Registration ---
@@ -107,7 +106,7 @@ def run_articulated_spine_benchmark():
         f_target_ap, f_target_lat, init_base_pose=init_base_pose,
         max_iter_global=40, max_iter_local=30
     )
-    art_base_err = np.linalg.norm(res_articulated['base_pose'][3:])
+    art_base_err = compute_mtre_6dof(gt_base_pose, res_articulated['base_pose'], volume.shape, spacing=(vox_size,) * 3)
     # Compute error on reconstructed joint angles
     err_joint1 = np.linalg.norm(res_articulated['articulations'][0] - gt_art_l4)
     err_joint2 = np.linalg.norm(res_articulated['articulations'][1] - gt_art_l3)

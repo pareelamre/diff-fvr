@@ -1,3 +1,5 @@
+"""One CT source volume, 20 poses, same-renderer synthetic targets; no acquired fluoroscopy."""
+
 import os
 import sys
 import time
@@ -8,7 +10,7 @@ import pandas as pd
 from scipy.ndimage import zoom
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from fvr.dicom_loader import load_dicom_series, hu_to_attenuation
+from fvr.dicom_loader import resample_isotropic_cube, load_dicom_series, hu_to_attenuation
 from fvr.diff_fvr import DifferentiableFourierVolumeRenderer
 from fvr.registration_3d2d import BiplanarSpineRegistrationEngine, compute_mtre_6dof
 
@@ -49,23 +51,9 @@ def run_clinical_benchmark():
     phys_x = vol_hu.shape[2] * spacing[2]
     print(f"Physical CT FOV: Z={phys_z:.1f} mm, Y={phys_y:.1f} mm, X={phys_x:.1f} mm")
 
-    # Resample to isotropic grid (voxel size uniform in X, Y, Z) and pad to cubic FOV
     target_xy = 96
-    vox_size = phys_x / target_xy  # 2.604 mm
-    target_z = int(round(phys_z / vox_size))  # 61 voxels
-
-    zz = target_z / vol_hu.shape[0]
-    zy = target_xy / vol_hu.shape[1]
-    zx = target_xy / vol_hu.shape[2]
-
-    print(f"Resampling to isotropic grid ({target_z}x{target_xy}x{target_xy}) at {vox_size:.2f} mm/voxel...")
-    vol_iso = zoom(vol_hu, (zz, zy, zx), order=1)
-
-    # Center-pad along Z with air (-1000 HU) to form a uniform cubic domain (96x96x96)
-    pad_z_before = (target_xy - target_z) // 2
-    pad_z_after = target_xy - target_z - pad_z_before
-    vol_resampled = np.pad(vol_iso, ((pad_z_before, pad_z_after), (0, 0), (0, 0)), mode='constant', constant_values=-1000.0)
-    print(f"Final isotropic cubic volume for registration: {vol_resampled.shape}")
+    vol_resampled, grid_spacing = resample_isotropic_cube(vol_hu, spacing, target_xy)
+    vox_size = grid_spacing[0]
     vol_mu = hu_to_attenuation(vol_resampled)
 
     renderer = DifferentiableFourierVolumeRenderer(vol_mu, pad_factor=2.0)
@@ -88,7 +76,7 @@ def run_clinical_benchmark():
         true_pose = (yaw, pitch, roll, tx, ty, tz)
 
         init_pose = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-        init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape)
+        init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape, spacing=(vox_size,) * 3)
 
         # Render ground-truth projections
         target_ap_clean = renderer.render_drr(yaw, pitch, roll, tx=tx, ty=tz, view='ap')
@@ -102,11 +90,11 @@ def run_clinical_benchmark():
         t0 = time.time()
         res_clean = engine.register_biplanar(target_ap_clean, target_lat_clean, initial_pose=init_pose, max_iter=70)
         t_clean = time.time() - t0
-        mtre_clean = compute_mtre_6dof(true_pose, res_clean['estimated_pose'], vol_mu.shape)
+        mtre_clean = compute_mtre_6dof(true_pose, res_clean['estimated_pose'], vol_mu.shape, spacing=(vox_size,) * 3)
 
         records.append({
             'Trial': trial,
-            'Condition': 'Clean (Standard Dose)',
+            'Condition': 'Clean (Synthetic)',
             'Init_mTRE_mm': init_mtre,
             'Final_mTRE_mm': mtre_clean,
             'Success_2mm': mtre_clean < 2.0,
@@ -126,7 +114,7 @@ def run_clinical_benchmark():
         t0 = time.time()
         res_noisy = engine.register_biplanar(target_ap_noisy, target_lat_noisy, initial_pose=init_pose, max_iter=70)
         t_noisy = time.time() - t0
-        mtre_noisy = compute_mtre_6dof(true_pose, res_noisy['estimated_pose'], vol_mu.shape)
+        mtre_noisy = compute_mtre_6dof(true_pose, res_noisy['estimated_pose'], vol_mu.shape, spacing=(vox_size,) * 3)
 
         records.append({
             'Trial': trial,
@@ -150,6 +138,8 @@ def run_clinical_benchmark():
             print(f"  Trial {trial+1:2d}/{n_trials} | Clean mTRE: {mtre_clean:.2f} mm | Low-Dose mTRE: {mtre_noisy:.2f} mm")
 
     df = pd.DataFrame(records)
+    df['Metric_units'] = 'mm'
+    df['Target_type'] = 'synthetic_same_renderer'
     csv_path = out_dir / "table7_clinical_benchmark.csv"
     df.to_csv(csv_path, index=False)
     print(f"\nSaved clinical registration results to: {csv_path}")
@@ -215,7 +205,7 @@ def run_clinical_benchmark():
     # Cumulative Error Distribution on Real Clinical CT
     ax_ced = fig.add_subplot(gs[1, 2])
     th_range = np.linspace(0.0, 8.0, 81)
-    clean_grp = df[df['Condition'] == 'Clean (Standard Dose)']
+    clean_grp = df[df['Condition'] == 'Clean (Synthetic)']
     noisy_grp = df[df['Condition'] == 'Low-Dose Fluoroscopy (Poisson + Gaussian Noise)']
 
     clean_rates = [np.mean(clean_grp['Final_mTRE_mm'] <= t) * 100 for t in th_range]

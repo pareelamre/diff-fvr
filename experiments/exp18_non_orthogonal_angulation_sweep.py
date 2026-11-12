@@ -27,7 +27,7 @@ from scipy import fft
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.fvr.dicom_loader import load_dicom_series, hu_to_attenuation
+from src.fvr.dicom_loader import resample_isotropic_cube, load_dicom_series, hu_to_attenuation
 from src.fvr.diff_fvr import DifferentiableFourierVolumeRenderer
 from src.fvr.registration_3d2d import compute_mtre_6dof
 
@@ -57,10 +57,8 @@ def run_non_orthogonal_angulation_sweep():
         vox_size = phys_x / target_xy
         target_z = int(round(phys_z / vox_size))
 
-        vol_iso = zoom(vol_hu, (target_z / vol_hu.shape[0], target_xy / vol_hu.shape[1], target_xy / vol_hu.shape[2]), order=1)
-        pad_z_before = (target_xy - target_z) // 2
-        pad_z_after = target_xy - target_z - pad_z_before
-        vol_cubic = np.pad(vol_iso, ((pad_z_before, pad_z_after), (0, 0), (0, 0)), mode='constant', constant_values=-1000.0)
+        vol_cubic, grid_spacing = resample_isotropic_cube(vol_hu, spacing, target_xy)
+        vox_size = grid_spacing[0]
         vol_mu = hu_to_attenuation(vol_cubic)
 
         renderer = DifferentiableFourierVolumeRenderer(vol_mu, pad_factor=2.0)
@@ -105,7 +103,7 @@ def run_non_orthogonal_angulation_sweep():
             elapsed = time.time() - t0
 
             est_pose = tuple(res.x)
-            final_mtre = compute_mtre_6dof(true_pose, est_pose, vol_mu.shape)
+            final_mtre = compute_mtre_6dof(true_pose, est_pose, vol_mu.shape, spacing=(vox_size,) * 3)
 
             err_tx = abs(est_pose[3] - true_pose[3])
             err_ty = abs(est_pose[4] - true_pose[4])
@@ -127,6 +125,8 @@ def run_non_orthogonal_angulation_sweep():
             })
 
         df = pd.DataFrame(records)
+        df['Metric_units'] = 'mm'
+        df['Target_type'] = 'synthetic'
         df.to_csv(csv_path, index=False)
         print(f"\nSaved results table to: {csv_path}")
 

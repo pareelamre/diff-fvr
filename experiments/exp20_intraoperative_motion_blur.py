@@ -29,7 +29,7 @@ from scipy import fft
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.fvr.dicom_loader import load_dicom_series, hu_to_attenuation
+from src.fvr.dicom_loader import resample_isotropic_cube, load_dicom_series, hu_to_attenuation
 from src.fvr.diff_fvr import DifferentiableFourierVolumeRenderer
 from src.fvr.registration_3d2d import compute_mtre_6dof
 
@@ -94,10 +94,8 @@ def run_motion_blur_benchmark():
         vox_size = phys_x / target_xy
         target_z = int(round(phys_z / vox_size))
 
-        vol_iso = zoom(vol_hu, (target_z / vol_hu.shape[0], target_xy / vol_hu.shape[1], target_xy / vol_hu.shape[2]), order=1)
-        pad_z_before = (target_xy - target_z) // 2
-        pad_z_after = target_xy - target_z - pad_z_before
-        vol_cubic = np.pad(vol_iso, ((pad_z_before, pad_z_after), (0, 0), (0, 0)), mode='constant', constant_values=-1000.0)
+        vol_cubic, grid_spacing = resample_isotropic_cube(vol_hu, spacing, target_xy)
+        vox_size = grid_spacing[0]
         vol_mu = hu_to_attenuation(vol_cubic)
 
         renderer = DifferentiableFourierVolumeRenderer(vol_mu, pad_factor=2.0)
@@ -106,7 +104,7 @@ def run_motion_blur_benchmark():
 
         true_pose = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         init_pose = (2.0, -1.5, 1.2, 3.0, -2.0, 2.5)
-        init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape)
+        init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape, spacing=(vox_size,) * 3)
         print(f"Initial Misalignment: {init_pose}, Initial mTRE: {init_mtre:.2f} mm")
 
         clean_target_ap = renderer.render_drr(0, 0, 0, tx=0, ty=0, view='ap')
@@ -145,7 +143,7 @@ def run_motion_blur_benchmark():
             t0 = time.time()
             res = minimize(obj_sncc, x0=np.array(init_pose), method='Powell', options={'maxiter': 20, 'ftol': 1e-4})
             t_run = time.time() - t0
-            mtre = compute_mtre_6dof(true_pose, tuple(res.x), vol_mu.shape)
+            mtre = compute_mtre_6dof(true_pose, tuple(res.x), vol_mu.shape, spacing=(vox_size,) * 3)
 
             # Extract translation errors
             tx_err = abs(res.x[3] - true_pose[3])
@@ -168,6 +166,8 @@ def run_motion_blur_benchmark():
             })
 
         df = pd.DataFrame(records)
+        df['Metric_units'] = 'mm'
+        df['Target_type'] = 'synthetic'
         df.to_csv(csv_path, index=False)
         print(f"\nSaved benchmark CSV to: {csv_path}")
 
@@ -183,10 +183,8 @@ def run_motion_blur_benchmark():
     phys_x = vol_hu.shape[2] * spacing[2]
     vox_size = phys_x / target_xy
     target_z = int(round(phys_z / vox_size))
-    vol_iso = zoom(vol_hu, (target_z / vol_hu.shape[0], target_xy / vol_hu.shape[1], target_xy / vol_hu.shape[2]), order=1)
-    pad_z_before = (target_xy - target_z) // 2
-    pad_z_after = target_xy - target_z - pad_z_before
-    vol_cubic = np.pad(vol_iso, ((pad_z_before, pad_z_after), (0, 0), (0, 0)), mode='constant', constant_values=-1000.0)
+    vol_cubic, grid_spacing = resample_isotropic_cube(vol_hu, spacing, target_xy)
+    vox_size = grid_spacing[0]
     vol_mu = hu_to_attenuation(vol_cubic)
     renderer = DifferentiableFourierVolumeRenderer(vol_mu, pad_factor=2.0)
     clean_lat = renderer.render_drr(0, 0, 0, tx=0, ty=0, view='lateral')

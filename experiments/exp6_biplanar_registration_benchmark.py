@@ -179,6 +179,8 @@ def run_benchmark():
             print(f"  Completed {trial + 1}/{n_trials} trials | Biplanar mTRE: {mtre_bi:.2f} mm | Mono mTRE: {mtre_mono:.2f} mm")
 
     df = pd.DataFrame(records)
+    df['Metric_units'] = 'mm'  # Synthetic phantom uses one mm per voxel.
+    df['Target_type'] = 'synthetic'
     csv_path = out_dir / "table6_biplanar_benchmark.csv"
     df.to_csv(csv_path, index=False)
     print(f"\nSaved registration benchmark table to: {csv_path}")

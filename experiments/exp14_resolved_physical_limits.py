@@ -13,7 +13,7 @@ if hasattr(sys.stdout, 'reconfigure'):
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from fvr.dicom_loader import load_dicom_series, hu_to_attenuation
+from fvr.dicom_loader import resample_isotropic_cube, load_dicom_series, hu_to_attenuation
 from fvr.diff_fvr import DifferentiableFourierVolumeRenderer
 from fvr.registration_3d2d import BiplanarSpineRegistrationEngine, compute_mtre_6dof
 from fvr.robust_registration import RobustBiplanarRegistrationEngine
@@ -41,10 +41,8 @@ def run_resolved_limits_validation():
     vox_size = phys_x / target_xy
     target_z = int(round(phys_z / vox_size))
 
-    vol_iso = zoom(vol_hu, (target_z / vol_hu.shape[0], target_xy / vol_hu.shape[1], target_xy / vol_hu.shape[2]), order=1)
-    pad_z_before = (target_xy - target_z) // 2
-    pad_z_after = target_xy - target_z - pad_z_before
-    vol_cubic = np.pad(vol_iso, ((pad_z_before, pad_z_after), (0, 0), (0, 0)), mode='constant', constant_values=-1000.0)
+    vol_cubic, grid_spacing = resample_isotropic_cube(vol_hu, spacing, target_xy)
+    vox_size = grid_spacing[0]
 
     vol_mu = hu_to_attenuation(vol_cubic)
     renderer = DifferentiableFourierVolumeRenderer(vol_mu, pad_factor=2.0)
@@ -68,7 +66,7 @@ def run_resolved_limits_validation():
         true_pose = (yaw, pitch, roll, tx, ty, tz)
 
         init_pose = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-        init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape)
+        init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape, spacing=(vox_size,) * 3)
 
         target_ap = renderer.render_drr(yaw, pitch, roll, tx=tx, ty=tz, view='ap')
         target_lat = renderer.render_drr(yaw, pitch, roll, tx=ty, ty=tz, view='lateral')
@@ -79,11 +77,11 @@ def run_resolved_limits_validation():
 
         # Baseline (Unmitigated)
         res_base = baseline_engine.register_biplanar(ap_occ, lat_occ, initial_pose=init_pose, max_iter=70)
-        mtre_base = compute_mtre_6dof(true_pose, res_base['estimated_pose'], vol_mu.shape)
+        mtre_base = compute_mtre_6dof(true_pose, res_base['estimated_pose'], vol_mu.shape, spacing=(vox_size,) * 3)
 
         # Robust Engine (Inpainting + Masking)
         res_robust = robust_engine.register_biplanar_robust(ap_occ, lat_occ, initial_pose=init_pose, enable_metal_masking=True, max_iter=70)
-        mtre_robust = compute_mtre_6dof(true_pose, res_robust['estimated_pose'], vol_mu.shape)
+        mtre_robust = compute_mtre_6dof(true_pose, res_robust['estimated_pose'], vol_mu.shape, spacing=(vox_size,) * 3)
 
         records.append({
             'Stress_Category': '30% Surgical Metal Occlusion',
@@ -110,18 +108,18 @@ def run_resolved_limits_validation():
         true_pose = (yaw, pitch, roll, tx, ty, tz)
 
         init_pose = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-        init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape)
+        init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape, spacing=(vox_size,) * 3)
 
         target_ap = renderer.render_drr(yaw, pitch, roll, tx=tx, ty=tz, view='ap')
         target_lat = renderer.render_drr(yaw, pitch, roll, tx=ty, ty=tz, view='lateral')
 
         # Baseline (Single Scale)
         res_base = baseline_engine.register_biplanar(target_ap, target_lat, initial_pose=init_pose, max_iter=75)
-        mtre_base = compute_mtre_6dof(true_pose, res_base['estimated_pose'], vol_mu.shape)
+        mtre_base = compute_mtre_6dof(true_pose, res_base['estimated_pose'], vol_mu.shape, spacing=(vox_size,) * 3)
 
         # Robust Engine (Spectral Annealing Pyramid)
         res_robust = robust_engine.register_biplanar_robust(target_ap, target_lat, initial_pose=init_pose, enable_spectral_annealing=True, max_iter=75)
-        mtre_robust = compute_mtre_6dof(true_pose, res_robust['estimated_pose'], vol_mu.shape)
+        mtre_robust = compute_mtre_6dof(true_pose, res_robust['estimated_pose'], vol_mu.shape, spacing=(vox_size,) * 3)
 
         records.append({
             'Stress_Category': 'Extreme Misalignment (±20°/±20mm)',
@@ -135,6 +133,8 @@ def run_resolved_limits_validation():
         print(f"  Trial {trial+1}/8 | Init: {init_mtre:.2f} mm | Baseline: {mtre_base:.2f} mm -> Resolved: {mtre_robust:.3f} mm (Success: {mtre_robust < 2.0})")
 
     df = pd.DataFrame(records)
+    df['Metric_units'] = 'mm'
+    df['Target_type'] = 'synthetic'
     csv_path = out_dir / "table14_resolved_physical_limits.csv"
     df.to_csv(csv_path, index=False)
     print(f"\nSaved resolved limits benchmark to: {csv_path}")

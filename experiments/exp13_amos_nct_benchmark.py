@@ -1,3 +1,5 @@
+"""One CT source volume, 20 poses, same-renderer synthetic targets; no acquired fluoroscopy."""
+
 import os
 import sys
 import time
@@ -12,7 +14,7 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(line_buffering=True)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from fvr.dicom_loader import hu_to_attenuation
+from fvr.dicom_loader import resample_isotropic_cube, hu_to_attenuation
 from fvr.diff_fvr import DifferentiableFourierVolumeRenderer
 from fvr.registration_3d2d import BiplanarSpineRegistrationEngine, compute_mtre_6dof
 
@@ -31,7 +33,7 @@ def run_amos_benchmark():
     amos_file = Path(__file__).resolve().parent.parent / "data" / "amos" / "amos_0001.nii.gz"
 
     print("=" * 75)
-    print("  EXPERIMENT 13: Multi-Center AMOS Benchmark (NCT Dresden Cohort)")
+    print("  EXPERIMENT 13: Multi-Center AMOS Benchmark (Single Source Volume)")
     print("=" * 75)
 
     print(f"Loading AMOS CT volume from: {amos_file}")
@@ -42,27 +44,9 @@ def run_amos_benchmark():
     sp_x, sp_y, sp_z = itk_img.GetSpacing()
     print(f"Loaded AMOS CT: Shape=({nz}, {ny}, {nx}), Spacing=[{sp_z:.2f}, {sp_y:.3f}, {sp_x:.3f}] mm")
 
-    # Resample to uniform cubic isotropic volume (96, 96, 96)
     target_dim = 96
-    phys_z = nz * sp_z
-    phys_y = ny * sp_y
-    phys_x = nx * sp_x
-
-    vox_size = max(phys_z, phys_x) / target_dim
-    scale_z = target_dim / nz
-    scale_y = (phys_y / vox_size) / ny
-    scale_x = (phys_x / vox_size) / nx
-
-    vol_iso = zoom(vol_hu, (scale_z, scale_y, scale_x), order=1)
-    
-    pad_y_before = (target_dim - vol_iso.shape[1]) // 2
-    pad_y_after = target_dim - vol_iso.shape[1] - pad_y_before
-    pad_x_before = (target_dim - vol_iso.shape[2]) // 2
-    pad_x_after = target_dim - vol_iso.shape[2] - pad_x_before
-
-    vol_cubic = np.pad(vol_iso, ((0, 0), (pad_y_before, pad_y_after), (pad_x_before, pad_x_after)), mode='constant', constant_values=-1000.0)
-    print(f"Resampled isotropic cubic volume: {vol_cubic.shape}, Voxel size={vox_size:.2f} mm")
-
+    vol_cubic, grid_spacing = resample_isotropic_cube(vol_hu, (sp_z, sp_y, sp_x), target_dim)
+    vox_size = grid_spacing[0]
     vol_mu = hu_to_attenuation(vol_cubic)
     renderer = DifferentiableFourierVolumeRenderer(vol_mu, pad_factor=2.0)
     engine = BiplanarSpineRegistrationEngine(renderer)
@@ -82,7 +66,7 @@ def run_amos_benchmark():
         true_pose = (yaw, pitch, roll, tx, ty, tz)
 
         init_pose = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-        init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape)
+        init_mtre = compute_mtre_6dof(true_pose, init_pose, vol_mu.shape, spacing=(vox_size,) * 3)
 
         target_ap_clean = renderer.render_drr(yaw, pitch, roll, tx=tx, ty=tz, view='ap')
         target_lat_clean = renderer.render_drr(yaw, pitch, roll, tx=ty, ty=tz, view='lateral')
@@ -94,11 +78,11 @@ def run_amos_benchmark():
         t0 = time.time()
         res_clean = engine.register_biplanar(target_ap_clean, target_lat_clean, initial_pose=init_pose, max_iter=70)
         t_clean = time.time() - t0
-        mtre_clean = compute_mtre_6dof(true_pose, res_clean['estimated_pose'], vol_mu.shape)
+        mtre_clean = compute_mtre_6dof(true_pose, res_clean['estimated_pose'], vol_mu.shape, spacing=(vox_size,) * 3)
 
         records.append({
-            'Cohort': 'AMOS (NCT Dresden Baseline)',
-            'Condition': 'Clean (Standard Dose)',
+            'Cohort': 'AMOS Source Volume',
+            'Condition': 'Clean (Synthetic)',
             'Trial': trial,
             'Init_mTRE_mm': init_mtre,
             'Final_mTRE_mm': mtre_clean,
@@ -112,10 +96,10 @@ def run_amos_benchmark():
         t0 = time.time()
         res_noisy = engine.register_biplanar(target_ap_noisy, target_lat_noisy, initial_pose=init_pose, max_iter=70)
         t_noisy = time.time() - t0
-        mtre_noisy = compute_mtre_6dof(true_pose, res_noisy['estimated_pose'], vol_mu.shape)
+        mtre_noisy = compute_mtre_6dof(true_pose, res_noisy['estimated_pose'], vol_mu.shape, spacing=(vox_size,) * 3)
 
         records.append({
-            'Cohort': 'AMOS (NCT Dresden Baseline)',
+            'Cohort': 'AMOS Source Volume',
             'Condition': 'Low-Dose Fluoroscopy',
             'Trial': trial,
             'Init_mTRE_mm': init_mtre,
@@ -130,6 +114,8 @@ def run_amos_benchmark():
             print(f"  Trial {trial+1:2d}/{n_trials} | Clean: {mtre_clean:.3f} mm | Low-Dose: {mtre_noisy:.3f} mm")
 
     df = pd.DataFrame(records)
+    df['Metric_units'] = 'mm'
+    df['Target_type'] = 'synthetic_same_renderer'
     csv_path = out_dir / "table13_amos_clinical_benchmark.csv"
     df.to_csv(csv_path, index=False)
     print(f"\nSaved AMOS clinical benchmark to: {csv_path}")
@@ -166,7 +152,7 @@ def run_amos_benchmark():
 
     # Bottom Row Left: Boxplots for Clean vs Noisy
     ax_box = fig.add_subplot(gs[1, 0:2])
-    clean_vals = df[df["Condition"] == "Clean (Standard Dose)"]["Final_mTRE_mm"].values
+    clean_vals = df[df["Condition"] == "Clean (Synthetic)"]["Final_mTRE_mm"].values
     noisy_vals = df[df["Condition"] == "Low-Dose Fluoroscopy"]["Final_mTRE_mm"].values
 
     bp = ax_box.boxplot([clean_vals, noisy_vals], tick_labels=['Standard Dose', 'Low-Dose Fluoroscopy'], patch_artist=True)

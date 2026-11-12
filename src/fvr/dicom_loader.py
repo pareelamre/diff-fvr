@@ -5,6 +5,29 @@ from typing import Optional, Tuple
 import numpy as np
 import pydicom
 import SimpleITK as sitk
+from scipy.ndimage import affine_transform
+
+
+def resample_isotropic_cube(volume_hu, spacing, target_res):
+    """Center a CT in a cubic grid without cropping its physical field of view.
+
+    Return HU data and (Z, Y, X) spacing in mm. Sampling coordinates preserve
+    physical distances exactly; padding outside the acquired CT is air.
+    """
+    volume_hu = np.asarray(volume_hu)
+    spacing = np.asarray(spacing, dtype=float)
+    if volume_hu.ndim != 3 or min(volume_hu.shape) < 2 or not np.all(np.isfinite(volume_hu)):
+        raise ValueError('CT must be a finite 3D array with at least two voxels per axis.')
+    if spacing.shape != (3,) or not np.all(np.isfinite(spacing)) or np.any(spacing <= 0):
+        raise ValueError('spacing must contain three finite positive values in mm (Z, Y, X).')
+    if not isinstance(target_res, (int, np.integer)) or target_res < 2:
+        raise ValueError('target_res must be an integer of at least two.')
+    voxel_mm = float(np.max(np.array(volume_hu.shape) * spacing) / target_res)
+    ratios = voxel_mm / spacing
+    offset = (np.array(volume_hu.shape) - 1) / 2 - ratios * (target_res - 1) / 2
+    resampled = affine_transform(volume_hu.astype(np.float32), np.diag(ratios), offset=offset,
+                                output_shape=(target_res,) * 3, order=1, cval=-1000.)
+    return resampled, (voxel_mm,) * 3
 
 
 def load_dicom_series(directory: str | Path) -> Tuple[np.ndarray, Tuple[float, float, float]]:

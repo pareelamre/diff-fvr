@@ -31,7 +31,7 @@ from scipy.ndimage import zoom
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.fvr.dicom_loader import load_dicom_series, hu_to_attenuation
+from src.fvr.dicom_loader import resample_isotropic_cube, load_dicom_series, hu_to_attenuation
 from src.fvr.diff_fvr import DifferentiableFourierVolumeRenderer
 from src.fvr.gradients import SpectralGradientEngine
 from src.fvr.registration_3d2d import compute_mtre_6dof
@@ -59,10 +59,8 @@ def run_dynamic_video_tracking_benchmark():
     vox_size = phys_x / target_xy
     target_z = int(round(phys_z / vox_size))
 
-    vol_iso = zoom(vol_hu, (target_z / vol_hu.shape[0], target_xy / vol_hu.shape[1], target_xy / vol_hu.shape[2]), order=1)
-    pad_z_before = (target_xy - target_z) // 2
-    pad_z_after = target_xy - target_z - pad_z_before
-    vol_cubic = np.pad(vol_iso, ((pad_z_before, pad_z_after), (0, 0), (0, 0)), mode='constant', constant_values=-1000.0)
+    vol_cubic, grid_spacing = resample_isotropic_cube(vol_hu, spacing, target_xy)
+    vox_size = grid_spacing[0]
     vol_mu = hu_to_attenuation(vol_cubic)
 
     renderer = DifferentiableFourierVolumeRenderer(vol_mu, pad_factor=2.0)
@@ -124,7 +122,7 @@ def run_dynamic_video_tracking_benchmark():
         effective_fps = 1000.0 / latency_ms if latency_ms > 0 else 999.0
 
         # Evaluate tracking accuracy
-        mtre = compute_mtre_6dof(tuple(target_pose), tuple(current_estimate), vol_mu.shape)
+        mtre = compute_mtre_6dof(tuple(target_pose), tuple(current_estimate), vol_mu.shape, spacing=(vox_size,) * 3)
 
         frame_records.append({
             'Frame': frame_idx,
@@ -132,10 +130,10 @@ def run_dynamic_video_tracking_benchmark():
             'Latency_ms': latency_ms,
             'Effective_FPS': effective_fps,
             'mTRE_mm': mtre,
-            'True_Tz_mm': target_pose[5],
-            'Est_Tz_mm': current_estimate[5],
-            'True_Tx_mm': target_pose[3],
-            'Est_Tx_mm': current_estimate[3],
+            'True_Tz_mm': target_pose[5] * vox_size,
+            'Est_Tz_mm': current_estimate[5] * vox_size,
+            'True_Tx_mm': target_pose[3] * vox_size,
+            'Est_Tx_mm': current_estimate[3] * vox_size,
             'Loss': loss,
             'Submillimeter': bool(mtre < 1.0)
         })
@@ -144,6 +142,8 @@ def run_dynamic_video_tracking_benchmark():
             print(f"  Frame {frame_idx:02d} (t={times[frame_idx]:.2f}s): Latency = {latency_ms:.1f} ms ({effective_fps:.1f} FPS), mTRE = {mtre:.4f} mm")
 
     df = pd.DataFrame(frame_records)
+    df['Metric_units'] = 'mm'
+    df['Target_type'] = 'synthetic_same_renderer'
     df.to_csv(csv_path, index=False)
     print(f"\nSaved tracking CSV to: {csv_path}")
 
