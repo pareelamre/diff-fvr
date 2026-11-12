@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dual-Domain Diff-FVR: Intraoperative Spine Registration Simulator</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --accent: #38bdf8;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; }
+    body { background: var(--bg); color: var(--text); padding: 20px; font-size: 14px; }
+    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 20px; }
+    h1 { font-size: 20px; font-weight: 700; color: var(--accent); }
+    .badge { background: #0369a1; padding: 4px 8px; border-radius: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .container { display: grid; grid-template-columns: 320px 1fr 340px; gap: 20px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+    .card-title { font-size: 14px; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; display: flex; justify-content: space-between; }
+    .control-group { margin-bottom: 12px; }
+    label { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px; color: var(--text); }
+    input[type=range] { width: 100%; accent-color: var(--accent); background: var(--border); height: 6px; border-radius: 3px; outline: none; }
+    .btn { background: var(--accent); color: #0f172a; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; width: 100%; transition: opacity 0.2s; margin-top: 10px; }
+    .btn:hover { opacity: 0.9; }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-group { display: flex; gap: 8px; margin-top: 8px; }
+    .toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .toggle { position: relative; width: 44px; height: 22px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; inset: 0; background: var(--border); border-radius: 22px; transition: .2s; }
+    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: .2s; }
+    input:checked + .slider { background: var(--accent); }
+    input:checked + .slider:before { transform: translateX(22px); }
+    .viewport-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+    .viewport { background: #000; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; position: relative; aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .viewport canvas { width: 100%; height: 100%; image-rendering: pixelated; }
+    .viewport-label { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.7); padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; color: var(--accent); }
+    .telemetry { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-box { background: rgba(0,0,0,0.25); border: 1px solid var(--border); padding: 10px; border-radius: 6px; }
+    .stat-val { font-size: 18px; font-weight: 700; color: var(--success); }
+    .stat-lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .chart-container { background: #000; border: 1px solid var(--border); border-radius: 6px; height: 140px; margin-top: 10px; position: relative; }
+    .chart-canvas { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <h1>Dual-Domain Diff-FVR Surgical Registration Cockpit</h1>
+      <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">TU Dresden — Computational Modeling and Simulation (CMS)</div>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <span class="badge">O(N²) Frequency Slicing</span>
+      <span class="badge" style="background: #047857;">CPU-Native 1.38 ms</span>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <!-- Controls Panel -->
+    <div class="card">
+      <div class="card-title">6-DoF Rigid Pose Controls</div>
+      
+      <div class="control-group">
+        <label>Yaw (deg): <span id="val-yaw">0.0°</span></label>
+        <input type="range" id="yaw" min="-20" max="20" step="0.5" value="3.5">
+      </div>
+      <div class="control-group">
+        <label>Pitch (deg): <span id="val-pitch">0.0°</span></label>
+        <input type="range" id="pitch" min="-20" max="20" step="0.5" value="-2.5">
+      </div>
+      <div class="control-group">
+        <label>Roll (deg): <span id="val-roll">0.0°</span></label>
+        <input type="range" id="roll" min="-20" max="20" step="0.5" value="1.5">
+      </div>
+      <div class="control-group">
+        <label>Tx (mm): <span id="val-tx">0.0 mm</span></label>
+        <input type="range" id="tx" min="-20" max="20" step="0.5" value="4.0">
+      </div>
+      <div class="control-group">
+        <label>Ty (mm): <span id="val-ty">0.0 mm</span></label>
+        <input type="range" id="ty" min="-20" max="20" step="0.5" value="-3.0">
+      </div>
+      <div class="control-group">
+        <label>Tz (mm): <span id="val-tz">0.0 mm</span></label>
+        <input type="range" id="tz" min="-20" max="20" step="0.5" value="2.5">
+      </div>
+
+      <div class="card-title" style="margin-top: 20px;">Physical Stress Regimes</div>
+      
+      <div class="control-group">
+        <label>Radiation Dose (ph/px): <span id="val-dose">5×10⁴ (Low-Dose)</span></label>
+        <input type="range" id="dose" min="3" max="6" step="0.2" value="4.7">
+      </div>
+
+      <div class="control-group">
+        <label>Detector FOV Clipping: <span id="val-fov">0% (Full Field)</span></label>
+        <input type="range" id="fov" min="0" max="50" step="5" value="0">
+      </div>
+
+      <div class="control-group">
+        <label>C-Arm Inter-Beam Angle: <span id="val-angle">90° (Orthogonal)</span></label>
+        <input type="range" id="angle" min="15" max="90" step="5" value="90">
+      </div>
+
+      <div class="control-group">
+        <label>Respiratory Motion Blur: <span id="val-blur">0.0 mm (Sharp)</span></label>
+        <input type="range" id="blur" min="0" max="5.0" step="0.5" value="0.0">
+      </div>
+
+      <div class="toggle-row">
+        <span>Surgical Metal Hardware (Screws)</span>
+        <label class="toggle"><input type="checkbox" id="metal-toggle" checked><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span>Masked Spatial Loss (Auto Saturation)</span>
+        <label class="toggle"><input type="checkbox" id="mask-toggle" checked><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span>High-Pass Spectral-NCC (HP-SNCC)</span>
+        <label class="toggle"><input type="checkbox" id="hpf-toggle" checked><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span>2D Tukey Boundary Tapering</span>
+        <label class="toggle"><input type="checkbox" id="taper-toggle" checked><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span>C-Arm Isocenter Calibration (SAD/SDD)</span>
+        <label class="toggle"><input type="checkbox" id="calib-toggle" checked><span class="slider"></span></label>
+      </div>
+
+      <button class="btn" id="btn-register">Run 6-DoF Optimization</button>
+      <button class="btn btn-secondary" id="btn-reset">Reset Stochastic Perturbation</button>
+    </div>
+
+    <!-- Live Radiographic Viewports -->
+    <div>
+      <div class="viewport-grid">
+        <div class="viewport">
+          <div class="viewport-label">Fixed Intraoperative X-Ray (Fluoroscopy)</div>
+          <canvas id="cv-target" width="256" height="256"></canvas>
+        </div>
+        <div class="viewport">
+          <div class="viewport-label">Moving Fourier DRR (Diff-FVR)</div>
+          <canvas id="cv-pred" width="256" height="256"></canvas>
+        </div>
+      </div>
+
+      <div class="viewport-grid">
+        <div class="viewport">
+          <div class="viewport-label">Signed Registration Difference (|Pred - Fixed|)</div>
+          <canvas id="cv-diff" width="256" height="256"></canvas>
+        </div>
+        <div class="viewport">
+          <div class="viewport-label">Spectral Fourier Slicing Space |F(u, v)|</div>
+          <canvas id="cv-fourier" width="256" height="256"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Telemetry & Convergence Monitoring -->
+    <div class="card">
+      <div class="card-title">Live Surgical Telemetry</div>
+
+      <div class="telemetry">
+        <div class="stat-box">
+          <div class="stat-val" id="stat-mtre">5.72 mm</div>
+          <div class="stat-lbl">Mean TRE (mTRE)</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="stat-ncc" style="color: var(--accent);">0.812</div>
+          <div class="stat-lbl">Biplanar NCC</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="stat-status" style="color: var(--danger); font-size: 13px;">MISALIGNED</div>
+          <div class="stat-lbl">Clinical Status</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="stat-fps">724 fps</div>
+          <div class="stat-lbl">Synthesis Latency (1.38 ms)</div>
+        </div>
+      </div>
+
+      <div class="card-title" style="margin-top: 20px;">Convergence Trajectory</div>
+      <div class="chart-container">
+        <canvas id="cv-chart" class="chart-canvas" width="300" height="140"></canvas>
+      </div>
+
+      <div style="margin-top: 15px; font-size: 12px; color: var(--muted); line-height: 1.5;">
+        • <strong>Sub-Millimeter Threshold:</strong> &lt; 1.0 mm (Surgical target for pedicle screw placement).<br>
+        • <strong>Clinical Success Bound:</strong> &lt; 2.0 mm (Breach prevention margin).<br>
+        • <strong>Metal Occlusion:</strong> Saturation plateau excluded via auto-masking.
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // --- Spine Registration Simulation Engine ---
+    const cvTarget = document.getElementById('cv-target');
+    const cvPred = document.getElementById('cv-pred');
+    const cvDiff = document.getElementById('cv-diff');
+    const cvFourier = document.getElementById('cv-fourier');
+    const cvChart = document.getElementById('cv-chart');
+
+    const ctxTarget = cvTarget.getContext('2d');
+    const ctxPred = cvPred.getContext('2d');
+    const ctxDiff = cvDiff.getContext('2d');
+    const ctxFourier = cvFourier.getContext('2d');
+    const ctxChart = cvChart.getContext('2d');
+
+    let currentPose = { yaw: 3.5, pitch: -2.5, roll: 1.5, tx: 4.0, ty: -3.0, tz: 2.5 };
+    let targetPose = { yaw: 0.0, pitch: 0.0, roll: 0.0, tx: 0.0, ty: 0.0, tz: 0.0 };
+
+    let isRegistering = false;
+    let convergenceHistory = [];
+
+    // Synthesize Vertebral Body Anatomy
+    function drawVertebra(ctx, pose, isTarget, hasMetal, doseLevel, isMasked, fovClip, blurMm, isTapered, hasHpf) {
+      const w = 256, h = 256;
+      ctx.fillStyle = '#05070c';
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.save();
+      ctx.translate(w / 2 + pose.tx * 2.5, h / 2 + pose.tz * 2.5);
+      ctx.rotate((pose.yaw + pose.roll) * Math.PI / 180);
+
+      // Pitch controls vertical aspect foreshortening
+      const pitchScale = Math.cos(pose.pitch * Math.PI / 180);
+      ctx.scale(1.0, pitchScale);
+
+      // 1. Vertebral Body Cortical Bone Ring
+      const grad = ctx.createRadialGradient(0, 0, 10, 0, 0, 45);
+      grad.addColorStop(0, '#1a2333');
+      grad.addColorStop(0.7, '#64748b');
+      grad.addColorStop(1, '#cbd5e1');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 48, 38, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 2. Pedicles (Left & Right Oval Ring Densities)
+      ctx.fillStyle = '#f1f5f9';
+      ctx.beginPath();
+      ctx.ellipse(-24, -12, 10, 15, 0.2, 0, Math.PI * 2);
+      ctx.ellipse(24, -12, 10, 15, -0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 3. Spinous Process (Posterior Projection)
+      ctx.fillStyle = '#94a3b8';
+      ctx.beginPath();
+      ctx.moveTo(-8, 35);
+      ctx.lineTo(0, 75);
+      ctx.lineTo(8, 35);
+      ctx.closePath();
+      ctx.fill();
+
+      // 4. Transverse Processes (Lateral Wings)
+      ctx.beginPath();
+      ctx.moveTo(-45, 0); ctx.lineTo(-85, -15); ctx.lineTo(-45, -10);
+      ctx.moveTo(45, 0); ctx.lineTo(85, -15); ctx.lineTo(45, -10);
+      ctx.fill();
+
+      // 5. Metal Pedicle Screw Hardware
+      if (hasMetal) {
+        ctx.fillStyle = isMasked && !isTarget ? '#1e293b' : '#ffffff';
+        // Left Titanium Screw through pedicle
+        ctx.save();
+        ctx.translate(-24, -12);
+        ctx.rotate(-0.3);
+        ctx.fillRect(-4, -30, 8, 70);
+        ctx.restore();
+        // Right Titanium Screw
+        ctx.save();
+        ctx.translate(24, -12);
+        ctx.rotate(0.3);
+        ctx.fillRect(-4, -30, 8, 70);
+        ctx.restore();
+      }
+
+      ctx.restore();
+
+      // 5b. Soft Tissue Background Attenuation Field
+      if (isTarget) {
+        const bgGrad = ctx.createLinearGradient(0, 0, w, h);
+        bgGrad.addColorStop(0, 'rgba(45, 55, 75, 0.35)');
+        bgGrad.addColorStop(0.5, 'rgba(20, 25, 35, 0.15)');
+        bgGrad.addColorStop(1, 'rgba(65, 80, 105, 0.40)');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, w, h);
+      }
+
+      // 6. Respiratory Motion Blur (Vertical smear along z)
+      if (isTarget && blurMm > 0.05) {
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        const blurPix = blurMm * 3.5;
+        ctx.drawImage(ctx.canvas, 0, -blurPix);
+        ctx.drawImage(ctx.canvas, 0, blurPix);
+        ctx.restore();
+      }
+
+      // 7. FOV Truncation (Clipping margins)
+      if (isTarget && fovClip > 0) {
+        const clipPix = Math.round((fovClip / 100.0) * w * 0.5);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, w, clipPix); // top
+        ctx.fillRect(0, h - clipPix, w, clipPix); // bottom
+        ctx.fillRect(0, 0, clipPix, h); // left
+        ctx.fillRect(w - clipPix, 0, clipPix, h); // right
+        
+        if (isTapered) {
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(clipPix, clipPix, w - 2*clipPix, h - 2*clipPix);
+        }
+      }
+
+      // 8. Poisson Photon Starvation Quantum Noise
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+      const noiseAmp = Math.max(0, 6.0 - doseLevel) * 25.0;
+
+      for (let i = 0; i < data.length; i += 4) {
+        if (noiseAmp > 0) {
+          const noise = (Math.random() - 0.5) * noiseAmp;
+          data[i] = Math.min(255, Math.max(0, data[i] + noise));
+          data[i+1] = Math.min(255, Math.max(0, data[i+1] + noise));
+          data[i+2] = Math.min(255, Math.max(0, data[i+2] + noise));
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    // Render Difference Map (|Pred - Target|)
+    function drawDifference() {
+      const w = 256, h = 256;
+      const tData = ctxTarget.getImageData(0, 0, w, h).data;
+      const pData = ctxPred.getImageData(0, 0, w, h).data;
+      const diffImg = ctxDiff.createImageData(w, h);
+      const d = diffImg.data;
+
+      for (let i = 0; i < tData.length; i += 4) {
+        const diff = Math.abs(pData[i] - tData[i]);
+        if (diff > 25) {
+          d[i] = Math.min(255, diff * 3); // Red
+          d[i+1] = Math.max(0, 100 - diff);
+          d[i+2] = 20;
+          d[i+3] = 255;
+        } else {
+          d[i] = 20;
+          d[i+1] = Math.min(255, 200 - diff * 4); // Green
+          d[i+2] = 40;
+          d[i+3] = 255;
+        }
+      }
+      ctxDiff.putImageData(diffImg, 0, 0);
+    }
+
+    // Render 2D Fourier Spectrum
+    function drawFourierSpectrum() {
+      const w = 256, h = 256;
+      ctxFourier.fillStyle = '#000';
+      ctxFourier.fillRect(0, 0, w, h);
+
+      ctxFourier.save();
+      ctxFourier.translate(w/2, h/2);
+      ctxFourier.rotate((currentPose.yaw) * Math.PI / 180);
+
+      // Central DC peak
+      const rad = ctxFourier.createRadialGradient(0, 0, 1, 0, 0, 80);
+      rad.addColorStop(0, '#ffffff');
+      rad.addColorStop(0.1, '#38bdf8');
+      rad.addColorStop(0.4, '#1e3a8a');
+      rad.addColorStop(1, '#000000');
+
+      ctxFourier.fillStyle = rad;
+      ctxFourier.beginPath();
+      ctxFourier.arc(0, 0, 80, 0, Math.PI * 2);
+      ctxFourier.fill();
+
+      // High-frequency structural rays
+      ctxFourier.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+      ctxFourier.lineWidth = 1;
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+        ctxFourier.beginPath();
+        ctxFourier.moveTo(0, 0);
+        ctxFourier.lineTo(Math.cos(a) * 110, Math.sin(a) * 110);
+        ctxFourier.stroke();
+      }
+      ctxFourier.restore();
+    }
+
+    // Compute Telemetry & Plot
+    function updateTelemetry() {
+      const dt = Math.sqrt(
+        Math.pow(currentPose.tx - targetPose.tx, 2) +
+        Math.pow(currentPose.ty - targetPose.ty, 2) +
+        Math.pow(currentPose.tz - targetPose.tz, 2)
+      );
+      const dr = Math.sqrt(
+        Math.pow(currentPose.yaw - targetPose.yaw, 2) +
+        Math.pow(currentPose.pitch - targetPose.pitch, 2) +
+        Math.pow(currentPose.roll - targetPose.roll, 2)
+      );
+      const mtre = dt + dr * 0.35; // Simulated landmark mTRE
+
+      const ncc = Math.max(0.2, 1.0 - (mtre / 8.0) * 0.4);
+
+      document.getElementById('stat-mtre').textContent = mtre.toFixed(2) + ' mm';
+      document.getElementById('stat-ncc').textContent = ncc.toFixed(3);
+
+      const statusEl = document.getElementById('stat-status');
+      if (mtre < 1.0) {
+        statusEl.textContent = 'SUB-MM LOCKED';
+        statusEl.style.color = 'var(--success)';
+      } else if (mtre < 2.0) {
+        statusEl.textContent = 'CLINICAL SUCCESS';
+        statusEl.style.color = '#eab308';
+      } else {
+        statusEl.textContent = 'MISALIGNED';
+        statusEl.style.color = 'var(--danger)';
+      }
+
+      convergenceHistory.push(mtre);
+      if (convergenceHistory.length > 50) convergenceHistory.shift();
+      drawChart();
+    }
+
+    function drawChart() {
+      const w = cvChart.width, h = cvChart.height;
+      ctxChart.fillStyle = '#05070c';
+      ctxChart.fillRect(0, 0, w, h);
+
+      // 1.0 mm line
+      const y1mm = h - (1.0 / 8.0) * h;
+      ctxChart.strokeStyle = 'rgba(34, 197, 94, 0.4)';
+      ctxChart.setLineDash([4, 4]);
+      ctxChart.beginPath();
+      ctxChart.moveTo(0, y1mm); ctxChart.lineTo(w, y1mm);
+      ctxChart.stroke();
+
+      // 2.0 mm line
+      const y2mm = h - (2.0 / 8.0) * h;
+      ctxChart.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+      ctxChart.beginPath();
+      ctxChart.moveTo(0, y2mm); ctxChart.lineTo(w, y2mm);
+      ctxChart.stroke();
+      ctxChart.setLineDash([]);
+
+      if (convergenceHistory.length < 2) return;
+      ctxChart.strokeStyle = '#38bdf8';
+      ctxChart.lineWidth = 2;
+      ctxChart.beginPath();
+      for (let i = 0; i < convergenceHistory.length; i++) {
+        const x = (i / (convergenceHistory.length - 1)) * w;
+        const y = h - Math.min(1.0, convergenceHistory[i] / 8.0) * (h - 10) - 5;
+        if (i === 0) ctxChart.moveTo(x, y); else ctxChart.lineTo(x, y);
+      }
+      ctxChart.stroke();
+    }
+
+    function renderAll() {
+      const hasMetal = document.getElementById('metal-toggle').checked;
+      const isMasked = document.getElementById('mask-toggle').checked;
+      const hasHpf = document.getElementById('hpf-toggle').checked;
+      const isTapered = document.getElementById('taper-toggle').checked;
+      const dose = parseFloat(document.getElementById('dose').value);
+      const fovClip = parseFloat(document.getElementById('fov').value);
+      const blurMm = parseFloat(document.getElementById('blur').value);
+
+      drawVertebra(ctxTarget, targetPose, true, hasMetal, dose, isMasked, fovClip, blurMm, isTapered, hasHpf);
+      drawVertebra(ctxPred, currentPose, false, false, 6.0, false, 0, 0, false, false);
+      drawDifference();
+      drawFourierSpectrum();
+      updateTelemetry();
+    }
+
+    // UI Input Bindings
+    ['yaw', 'pitch', 'roll', 'tx', 'ty', 'tz'].forEach(param => {
+      const input = document.getElementById(param);
+      input.addEventListener('input', e => {
+        currentPose[param] = parseFloat(e.target.value);
+        document.getElementById('val-' + param).textContent = e.target.value + (param.startsWith('t') ? ' mm' : '°');
+        renderAll();
+      });
+    });
+
+    document.getElementById('dose').addEventListener('input', e => {
+      const val = parseFloat(e.target.value);
+      const flux = Math.round(Math.pow(10, val));
+      document.getElementById('val-dose').textContent = flux.toExponential(0) + ' ph/px';
+      renderAll();
+    });
+
+    document.getElementById('fov').addEventListener('input', e => {
+      const val = parseFloat(e.target.value);
+      document.getElementById('val-fov').textContent = val + '% ' + (val === 0 ? '(Full Field)' : (val > 30 ? '(Clipped Limit)' : '(Clinical Safe)'));
+      renderAll();
+    });
+
+    document.getElementById('angle').addEventListener('input', e => {
+      const val = parseFloat(e.target.value);
+      document.getElementById('val-angle').textContent = val + '° ' + (val === 90 ? '(Orthogonal)' : (val < 30 ? '(Extreme Oblique)' : '(Safe Oblique)'));
+      renderAll();
+    });
+
+    document.getElementById('blur').addEventListener('input', e => {
+      const val = parseFloat(e.target.value);
+      document.getElementById('val-blur').textContent = val.toFixed(1) + ' mm ' + (val === 0 ? '(Sharp)' : '(Respiratory Smear)');
+      renderAll();
+    });
+
+    document.getElementById('metal-toggle').addEventListener('change', renderAll);
+    document.getElementById('mask-toggle').addEventListener('change', renderAll);
+    document.getElementById('calib-toggle').addEventListener('change', renderAll);
+    document.getElementById('hpf-toggle').addEventListener('change', renderAll);
+    document.getElementById('taper-toggle').addEventListener('change', renderAll);
+
+    // Iterative Registration Animation
+    document.getElementById('btn-register').addEventListener('click', () => {
+      if (isRegistering) return;
+      isRegistering = true;
+      convergenceHistory = [];
+
+      const hasMetal = document.getElementById('metal-toggle').checked;
+      const isMasked = document.getElementById('mask-toggle').checked;
+      const hasHpf = document.getElementById('hpf-toggle').checked;
+      const isTapered = document.getElementById('taper-toggle').checked;
+      const fovClip = parseFloat(document.getElementById('fov').value);
+      const angleVal = parseFloat(document.getElementById('angle').value);
+
+      // Determine true attractor basin based on physical conditions
+      let finalTarget = { yaw: 0, pitch: 0, roll: 0, tx: 0, ty: 0, tz: 0 };
+      if (hasMetal && !isMasked) {
+        // Catastrophic failure: metal attraction
+        finalTarget = { yaw: 4.5, pitch: -3.0, roll: 2.0, tx: 12.0, ty: -10.0, tz: 8.0 };
+      } else if (fovClip > 35 && !isTapered) {
+        // Gibbs ringing breakdown boundary
+        finalTarget = { yaw: -5.0, pitch: 4.0, roll: -3.0, tx: -8.0, ty: 10.0, tz: 15.0 };
+      } else if (!hasHpf) {
+        // Soft tissue DC drift bias
+        finalTarget = { yaw: 0.8, pitch: -0.5, roll: 0.3, tx: 2.2, ty: -1.5, tz: 0.4 };
+      } else if (angleVal < 30) {
+        // Transverse degradation at extreme oblique angles
+        finalTarget = { yaw: 0.2, pitch: 0.1, roll: 0.1, tx: 0.1, ty: 0.8, tz: 0.1 };
+      }
+
+      let iter = 0;
+      const maxIter = 32;
+
+      const timer = setInterval(() => {
+        iter++;
+        // Convergence interpolation towards attractor
+        currentPose.yaw = currentPose.yaw * 0.78 + finalTarget.yaw * 0.22;
+        currentPose.pitch = currentPose.pitch * 0.78 + finalTarget.pitch * 0.22;
+        currentPose.roll = currentPose.roll * 0.78 + finalTarget.roll * 0.22;
+        currentPose.tx = currentPose.tx * 0.78 + finalTarget.tx * 0.22;
+        currentPose.ty = currentPose.ty * 0.78 + finalTarget.ty * 0.22;
+        currentPose.tz = currentPose.tz * 0.78 + finalTarget.tz * 0.22;
+
+        // Update slider values
+        ['yaw', 'pitch', 'roll', 'tx', 'ty', 'tz'].forEach(p => {
+          document.getElementById(p).value = currentPose[p].toFixed(2);
+          document.getElementById('val-' + p).textContent = currentPose[p].toFixed(2) + (p.startsWith('t') ? ' mm' : '°');
+        });
+
+        renderAll();
+
+        if (iter >= maxIter) {
+          clearInterval(timer);
+          isRegistering = false;
+        }
+      }, 50);
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      currentPose = { yaw: 3.5, pitch: -2.5, roll: 1.5, tx: 4.0, ty: -3.0, tz: 2.5 };
+      ['yaw', 'pitch', 'roll', 'tx', 'ty', 'tz'].forEach(p => {
+        document.getElementById(p).value = currentPose[p];
+        document.getElementById('val-' + p).textContent = currentPose[p] + (p.startsWith('t') ? ' mm' : '°');
+      });
+      convergenceHistory = [];
+      renderAll();
+    });
+
+    // Initial render
+    renderAll();
+  </script>
+</body>
+</html>
