@@ -1,5 +1,6 @@
 # Dual-Domain Differentiable Fourier Volume Rendering (Diff-FVR) for Real-Time Biplanar 3D–2D Spine Registration
 
+[![PyPI version](https://img.shields.io/pypi/v/diff-fvr.svg)](https://pypi.org/project/diff-fvr/)
 [![CI](https://github.com/pareelamre/diff-fvr/actions/workflows/ci.yml/badge.svg)](https://github.com/pareelamre/diff-fvr/actions/workflows/ci.yml)
 [![Pages](https://github.com/pareelamre/diff-fvr/actions/workflows/pages.yml/badge.svg)](https://pareelamre.github.io/diff-fvr/)
 [![Live Cockpit](https://img.shields.io/badge/Live%20Cockpit-GitHub%20Pages-brightgreen)](https://pareelamre.github.io/diff-fvr/)
