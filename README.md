@@ -50,9 +50,9 @@ and 3D anatomical fiducials (`128×128` interior crop, CPU):
   **Hybrid** (`30 Diff-FVR + 15 DiffDRR`) reaches `5.93 mm` in `62.1 s`, matching
   pure DiffDRR (`5.95 mm` in `103.3 s`) with `40%` lower runtime.
 - **Multi-Subject Cohort (`exp26`, `subject01`–`subject06`, $N=6$):**
-  **`78.7x`** mean forward speedup (`16.4 ms` vs. `1267.4 ms`), mean
-  `NCC(Diff-FVR, DiffDRR) = 0.9550`, and `2.46 s` mean Diff-FVR registration
-  vs. `167.11 s` for DiffDRR.
+  **`88.3x`** mean forward speedup (`14.7 ms` vs. `1248.1 ms`), mean
+  `NCC(Diff-FVR, DiffDRR) = 0.9550`, `2.24 s` mean Diff-FVR registration
+  (`6.04 mm`), and `3.41 mm` Hybrid (`123.27 s`) vs. `3.73 mm` DiffDRR (`157.97 s`).
 
 ## Projection geometry and physical units
 

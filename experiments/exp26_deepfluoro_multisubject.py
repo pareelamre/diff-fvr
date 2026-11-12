@@ -42,6 +42,22 @@ def ncc_2d(a: torch.Tensor, b: torch.Tensor) -> float:
     return float((a0 * b0).sum() / (a0.norm() * b0.norm() + 1e-8))
 
 
+def grad_ncc_2d(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    kx = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=a.dtype, device=a.device).view(1, 1, 3, 3)
+    ky = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=a.dtype, device=a.device).view(1, 1, 3, 3)
+    ax = F.conv2d(a, kx, padding=1)[:, :, 16:-16, 16:-16]
+    ay = F.conv2d(a, ky, padding=1)[:, :, 16:-16, 16:-16]
+    bx = F.conv2d(b, kx, padding=1)[:, :, 16:-16, 16:-16]
+    by = F.conv2d(b, ky, padding=1)[:, :, 16:-16, 16:-16]
+
+    def _ncc(u: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+        u0 = u - u.mean()
+        v0 = v - v.mean()
+        return (u0 * v0).sum() / (u0.norm() * v0.norm() + 1e-8)
+
+    return 0.5 * (_ncc(ax, bx) + _ncc(ay, by))
+
+
 class DeepFluoroDiffFVR:
     """World-aligned 3D Fourier Volume Rendering slice engine for arbitrary CT FOV."""
 
@@ -211,26 +227,30 @@ def main():
         pose_initA = RigidTransform(delta0.matrix @ poseA.matrix)
         mtre_init = compute_mtre(pose_initA, poseA, fids)
 
+        def combined_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+            return -0.5 * mncc(pred[:, :, 16:-16, 16:-16], target[:, :, 16:-16, 16:-16]) - 0.5 * grad_ncc_2d(pred, target)
+
         def run_method(steps_fvr: int, steps_drr: int):
             r = torch.zeros(1, 3, requires_grad=True)
             t = torch.zeros(1, 3, requires_grad=True)
             ts = time.perf_counter()
             if steps_fvr > 0:
-                opt = torch.optim.Adam([{"params": [r], "lr": 0.004}, {"params": [t], "lr": 1.2}])
-                sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=steps_fvr, eta_min=2e-4)
+                opt = torch.optim.Adam([{"params": [r], "lr": 0.003}, {"params": [t], "lr": 1.0}])
+                sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=steps_fvr, eta_min=1e-4)
                 for _ in range(steps_fvr):
                     opt.zero_grad()
                     d_mat = convert(r, t, parameterization="euler_angles", convention="ZYX").matrix
                     pA = RigidTransform(d_mat @ pose_initA.matrix)
                     pB = RigidTransform(T_rel.matrix @ pA.matrix)
-                    lA = -mncc(fvr.forward(drrA, pA, H)[:, :, 8:-8, 8:-8], xrayA[:, :, 8:-8, 8:-8])
-                    lB = -mncc(fvr.forward(drrB, pB, H)[:, :, 8:-8, 8:-8], xrayB[:, :, 8:-8, 8:-8])
+                    lA = combined_loss(fvr.forward(drrA, pA, H), xrayA)
+                    lB = combined_loss(fvr.forward(drrB, pB, H), xrayB)
                     (0.5 * (lA + lB)).backward()
+                    torch.nn.utils.clip_grad_norm_([r, t], 1.0)
                     opt.step()
                     sched.step()
             if steps_drr > 0:
-                lr_r = 0.003 if steps_fvr > 0 else 0.004
-                lr_t = 0.9 if steps_fvr > 0 else 1.2
+                lr_r = 0.0025 if steps_fvr > 0 else 0.003
+                lr_t = 0.8 if steps_fvr > 0 else 1.0
                 opt2 = torch.optim.Adam([{"params": [r], "lr": lr_r}, {"params": [t], "lr": lr_t}])
                 sched2 = torch.optim.lr_scheduler.CosineAnnealingLR(opt2, T_max=steps_drr, eta_min=1e-4)
                 for _ in range(steps_drr):
@@ -238,9 +258,10 @@ def main():
                     d_mat = convert(r, t, parameterization="euler_angles", convention="ZYX").matrix
                     pA = RigidTransform(d_mat @ pose_initA.matrix)
                     pB = RigidTransform(T_rel.matrix @ pA.matrix)
-                    lA = -mncc(drrA(pA)[:, :, 8:-8, 8:-8], xrayA[:, :, 8:-8, 8:-8])
-                    lB = -mncc(drrB(pB)[:, :, 8:-8, 8:-8], xrayB[:, :, 8:-8, 8:-8])
+                    lA = combined_loss(drrA(pA), xrayA)
+                    lB = combined_loss(drrB(pB), xrayB)
                     (0.5 * (lA + lB)).backward()
+                    torch.nn.utils.clip_grad_norm_([r, t], 1.0)
                     opt2.step()
                     sched2.step()
             elapsed = time.perf_counter() - ts
