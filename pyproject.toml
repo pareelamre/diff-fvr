@@ -38,6 +38,10 @@ dependencies = [
     "scikit-image>=0.20.0"
 ]
 
+[project.optional-dependencies]
+torch = ["torch>=2.0.0"]
+gpu = ["torch>=2.0.0"]
+
 [project.scripts]
 fvr-render = "fvr.cli:main_render"
 fvr-register = "fvr.cli:main_register"

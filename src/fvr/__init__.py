@@ -14,6 +14,13 @@ from .dicom_loader import load_dicom_series, create_spine_phantom, hu_to_attenua
 from .registration_3d2d import compute_mtre_6dof
 from .cli import main_render, main_register
 
+try:
+    from .torch_engine import TorchDiffFVREngine
+    _has_torch = True
+except ImportError:
+    TorchDiffFVREngine = None
+    _has_torch = False
+
 __version__ = "1.0.0"
 
 __all__ = [
@@ -24,6 +31,7 @@ __all__ = [
     "SpectralGradientEngine",
     "ArticulatedSpineModel",
     "VertebralSegment",
+    "TorchDiffFVREngine",
     "raycast_drr",
     "rotate_2d_fft",
     "load_dicom_series",
