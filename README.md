@@ -10,7 +10,7 @@ articulated spine models, metal masking, and PyTorch acceleration.
 have not been established by the experiments in this repository.**
 
 Author: Pareel Amre · TU Dresden · `pareel.amre@gmail.com`
-License: [MIT](LICENSE)
+License: [MIT](https://github.com/pareelamre/diff-fvr/blob/master/LICENSE)
 
 ## What the experiments establish
 
@@ -33,13 +33,13 @@ correction. CT-derived error values were computed in voxels while labeled mm;
 derived success rates and accuracy claims must be regenerated. The previous
 README's numerical accuracy and speed claims are withdrawn pending verified
 reruns with documented units, hardware, and an independent projection reference.
-See [result limitations](outputs/paper_figures/README.md).
+See [result limitations](https://github.com/pareelamre/diff-fvr/blob/master/outputs/paper_figures/README.md).
 
 ## Real Paired C-Arm & DiffDRR Benchmark (Experiments 25–26)
 
 Experiments `25` and `26` evaluate Diff-FVR against **DiffDRR 0.6.1** (Siddon
 cone-beam raycasting) on real paired pelvic CT + physical C-arm fluoroscopy
-(`DeepFluoro`, `subject01`–`subject06`) with ground-truth $\mathrm{SE}(3)$ poses
+(`DeepFluoro`, `subject01`–`subject06`) with ground-truth `SE(3)` poses
 and 3D anatomical fiducials (`128×128` interior crop, CPU):
 
 - **Forward Speed & Perspective Fidelity (`exp25`, `subject01`, 10 views):**
@@ -50,7 +50,7 @@ and 3D anatomical fiducials (`128×128` interior crop, CPU):
   Diff-FVR (35 steps) runs in `1.9 s` (`7.04 mm` mean mTRE); a coarse-to-fine
   **Hybrid** (`30 Diff-FVR + 15 DiffDRR`) reaches `5.93 mm` in `62.1 s`, matching
   pure DiffDRR (`5.95 mm` in `103.3 s`) with `40%` lower runtime.
-- **Multi-Subject Cohort (`exp26`, `subject01`–`subject06`, $N=6$):**
+- **Multi-Subject Cohort (`exp26`, `subject01`–`subject06`, `N=6`):**
   **`88.3x`** mean forward speedup (`14.7 ms` vs. `1248.1 ms`), mean
   `NCC(Diff-FVR, DiffDRR) = 0.9550`, `2.24 s` mean Diff-FVR registration
   (`6.04 mm`), and `3.41 mm` Hybrid (`123.27 s`) vs. `3.73 mm` DiffDRR (`157.97 s`).
@@ -96,12 +96,12 @@ kernels), with sequential micro-batching (`[mb=16]`) automatically engaged only 
   - `Hybrid PoU-Triton + DiffDRR polish`: **`1.069 mm`** mean mTRE (`0.938 mm` median), **`100.0%` (`18/18`) `< 2 mm`** and **`100.0% < 5 mm`**, **`1.818 s`** mean (`1.034 mm`, `0.873 mm` median, `100% < 2 mm` on `n=15` wide-angle pairs `> 15 deg`).
   - `PoU-FVR Triton Multi-Start (B=64)`: **`1.786 mm`** mean mTRE (`1.907 mm` median), `50.0% < 2 mm`, **`100.0% < 5 mm`**, `2.110 s` mean, **`1,348.0 MB`** peak VRAM (**`4.07x` less VRAM** than DiffDRR).
   - `DiffDRR Single-Start (f32 B=1)`: `7.216 mm` mean mTRE (`3.130 mm` median), `50.0% < 2 mm`, `61.1% < 5 mm`, `3.259 s` mean, `5,490.8 MB` peak VRAM (trapped at `11.0–21.1 mm` on out-of-basin starts).
-  Full CSVs are saved in [outputs/exp29_gpu_benchmark.csv](outputs/exp29_gpu_benchmark.csv),
-  [outputs/exp29_pou_ablation.csv](outputs/exp29_pou_ablation.csv),
-  [outputs/exp30_gpu_multistart_reg.csv](outputs/exp30_gpu_multistart_reg.csv),
-  [outputs/exp30_gpu_multistart_summary.csv](outputs/exp30_gpu_multistart_summary.csv),
-  [outputs/exp31_deepfluoro_gpu_cohort.csv](outputs/exp31_deepfluoro_gpu_cohort.csv), and
-  [outputs/exp31_deepfluoro_gpu_summary.csv](outputs/exp31_deepfluoro_gpu_summary.csv).
+  Full CSVs are saved in [outputs/exp29_gpu_benchmark.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp29_gpu_benchmark.csv),
+  [outputs/exp29_pou_ablation.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp29_pou_ablation.csv),
+  [outputs/exp30_gpu_multistart_reg.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp30_gpu_multistart_reg.csv),
+  [outputs/exp30_gpu_multistart_summary.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp30_gpu_multistart_summary.csv),
+  [outputs/exp31_deepfluoro_gpu_cohort.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp31_deepfluoro_gpu_cohort.csv), and
+  [outputs/exp31_deepfluoro_gpu_summary.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp31_deepfluoro_gpu_summary.csv).
 
 ## Projection geometry and physical units
 

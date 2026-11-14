@@ -5,7 +5,6 @@ Author: Pareel Amre, TU Dresden
 
 from .fvr_engine import FourierVolumeRenderer
 from .diff_fvr import DifferentiableFourierVolumeRenderer
-from .cone_beam_fvr import PerspectiveSlabFVR
 from .core_engine import RobustDiffFVREngine, detect_radio_opaque_metal
 from .gradients import SpectralGradientEngine
 from .articulated_spine import ArticulatedSpineModel, VertebralSegment
@@ -16,13 +15,15 @@ from .registration_3d2d import compute_mtre_6dof
 from .cli import main_render, main_register
 
 try:
+    from .cone_beam_fvr import PerspectiveSlabFVR
     from .torch_engine import TorchDiffFVREngine
     _has_torch = True
 except ImportError:
+    PerspectiveSlabFVR = None
     TorchDiffFVREngine = None
     _has_torch = False
 
-__version__ = "1.0.0"
+__version__ = "1.1.1"
 
 __all__ = [
     "FourierVolumeRenderer",

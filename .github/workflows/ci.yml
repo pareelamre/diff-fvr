@@ -24,9 +24,16 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
 
-      - name: Install package and CPU PyTorch
+      - name: Verify base install without torch
         run: |
           python -m pip install --upgrade pip
+          pip install .
+          python -c "import fvr, fvr.gradient_optimizer; print('Base diff-fvr version:', fvr.__version__)"
+          fvr-render --help
+          fvr-register --help
+
+      - name: Install package with CPU PyTorch
+        run: |
           pip install --extra-index-url https://download.pytorch.org/whl/cpu ".[torch]"
 
       - name: Run unit tests

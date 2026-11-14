@@ -9,7 +9,7 @@ Includes:
 import numpy as np
 import time
 from typing import Dict, Any, Optional, Tuple
-from src.fvr.gradients import SpectralGradientEngine
+from .gradients import SpectralGradientEngine
 
 
 class GradientRegistrationOptimizer:
