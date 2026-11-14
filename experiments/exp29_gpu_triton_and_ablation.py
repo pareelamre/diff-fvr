@@ -7,6 +7,7 @@ against nanodrr (PyTorch + Triton + compile + bfloat16) and DiffDRR on DeepFluor
 Also evaluates the grid_blocks x block_res Pareto frontier for IEEE TMI / MICCAI.
 """
 
+import argparse
 import csv
 import gc
 import statistics
@@ -22,7 +23,14 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
 from fvr import PerspectiveSlabFVR, TorchDiffFVREngine
-from fvr.triton_slice import fourier_slice_3d, fourier_slice_3d_torch, HAS_TRITON
+from fvr.cone_beam_fvr import edge_dominant_ncc
+from fvr.triton_slice import (
+    HAS_TRITON,
+    fourier_slice_3d,
+    fourier_slice_3d_torch,
+    pou_pinhole_warp_sum,
+    pou_pinhole_warp_sum_torch,
+)
 
 
 def _mark_cudagraph_step():
@@ -181,9 +189,41 @@ def verify_triton_parity(device: torch.device) -> None:
     fwd_err = float((out_tri - out_ref).abs().max())
     gu_err = float((u_tri.grad - u_ref.grad).abs().max())
     gv_err = float((v_tri.grad - v_ref.grad).abs().max())
-    print(f"[Triton CUDA Parity] max_fwd_err={fwd_err:.2e}, max_gu_err={gu_err:.2e}, max_gv_err={gv_err:.2e}")
+    print(f"[Triton Slice CUDA Parity] max_fwd_err={fwd_err:.2e}, max_gu_err={gu_err:.2e}, max_gv_err={gv_err:.2e}")
     assert fwd_err < 1e-4, f"Triton forward mismatch: {fwd_err}"
     assert gu_err < 1e-3 and gv_err < 1e-3, f"Triton gradient mismatch: {gu_err}, {gv_err}"
+
+    # Verify fused PoU pinhole warp+sum CUDA Triton parity (fwd + imgs/d_b/cu/cv bwd)
+    B_blk, N_p, P_w, H_w, W_w = 4, 3, 24, 32, 32
+    imgs0 = torch.randn(B_blk, N_p, P_w, P_w, device=device, dtype=torch.float32)
+    db0 = torch.full((B_blk, N_p), 300.0, device=device) + torch.randn(B_blk, N_p, device=device) * 15.0
+    cu0 = torch.randn(B_blk, N_p, device=device) * 4.0
+    cv0 = torch.randn(B_blk, N_p, device=device) * 4.0
+    rx_hw = torch.linspace(-0.08, 0.08, W_w, device=device).view(1, W_w).expand(H_w, W_w).contiguous()
+    ry_hw = torch.linspace(-0.08, 0.08, H_w, device=device).view(H_w, 1).expand(H_w, W_w).contiguous()
+    ic_hw = (1.0 / torch.sqrt(1.0 + rx_hw**2 + ry_hw**2).clamp(min=0.1)).contiguous()
+    rx_f, ry_f, ic_f = rx_hw.reshape(-1).contiguous(), ry_hw.reshape(-1).contiguous(), ic_hw.reshape(-1).contiguous()
+    inv_ds, c_idx = 0.25, 12.0
+
+    t_ref = [x.clone().requires_grad_(True) for x in (imgs0, db0, cu0, cv0)]
+    w_ref = pou_pinhole_warp_sum_torch(t_ref[0], t_ref[1], t_ref[2], t_ref[3], rx_hw, ry_hw, ic_hw, inv_ds, c_idx)
+    w_grad = torch.randn_like(w_ref)
+    (w_ref * w_grad).sum().backward()
+
+    t_tri = [x.clone().requires_grad_(True) for x in (imgs0, db0, cu0, cv0)]
+    w_tri = pou_pinhole_warp_sum(
+        t_tri[0], t_tri[1], t_tri[2], t_tri[3], rx_hw, ry_hw, ic_hw, rx_f, ry_f, ic_f, inv_ds, c_idx, use_triton=True
+    )
+    (w_tri * w_grad).sum().backward()
+
+    wf_err = float((w_tri - w_ref).abs().max())
+    g_errs = [float((a.grad - b.grad).abs().max()) for a, b in zip(t_tri, t_ref)]
+    print(
+        f"[Triton Warp+Sum CUDA Parity] max_fwd_err={wf_err:.2e}, "
+        f"max_g=(imgs:{g_errs[0]:.2e}, db:{g_errs[1]:.2e}, cu:{g_errs[2]:.2e}, cv:{g_errs[3]:.2e})"
+    )
+    assert wf_err < 1e-4, f"Triton warp forward mismatch: {wf_err}"
+    assert all(e < 1e-3 for e in g_errs), f"Triton warp gradient mismatch: {g_errs}"
 
 
 def load_deepfluoro_subject01() -> str:
@@ -196,7 +236,7 @@ def load_deepfluoro_subject01() -> str:
     return img_path
 
 
-def run_benchmark() -> None:
+def run_benchmark(smoke: bool = False) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device.type == "cuda" and hasattr(torch, "_dynamo"):
         torch._dynamo.config.cache_size_limit = 64
@@ -249,17 +289,19 @@ def run_benchmark() -> None:
     out_dir.mkdir(exist_ok=True)
     rows: List[Dict[str, object]] = []
 
-    warmup = 15 if device.type == "cuda" else 1
-    runs = 60 if device.type == "cuda" else 3
+    warmup = 15 if (device.type == "cuda" and not smoke) else 1
+    runs = 60 if (device.type == "cuda" and not smoke) else 3
+    h_list = [128] if smoke else [128, 200, 256, 512]
+    b_list = [1] if smoke else [1, 16, 64]
 
-    for H in [128, 200, 256, 512]:
+    for H in h_list:
         delx = 2.0 * (128.0 / H)
         k_inv = make_k_inv(sdd=1020.0, delx=delx, dely=delx, x0=0.0, y0=0.0, height=H, width=H).to(device)
         lat = PerspectiveSlabFVR.make_pinhole_lattice(k_inv, sdd_mm=1020.0, height=H, width=H)
         nano_cone = NanoDRR(k_inv=k_inv, sdd=torch.tensor([1020.0], device=device), height=H, width=H)
         nano_comp = torch.compile(nano_cone, mode="default") if device.type == "cuda" else nano_cone
 
-        for B in [1, 16, 64]:
+        for B in b_list:
             if device.type != "cuda" and ((H == 512 and B > 1) or B == 64):
                 continue
             rot = torch.tensor([[5.0, -3.0, 4.0]], device=device).expand(B, 3) + torch.randn(B, 3, device=device) * 2.0
@@ -350,17 +392,18 @@ def run_benchmark() -> None:
             f_targ = fvr_torch.prepare_spectral_target(torch.randn(1, 1, H, H, device=device))
             specs.append(("TorchDiffFVR Zero-IFFT NCC", lambda m=fvr_torch_comp, p=poses_b, ft=f_targ: m.forward_spectral_ncc(p, ft), False))
 
-            if B == 1:
-                def _nano_fb(m=nano_cone, s=n_subj_bf16, p=rt_inv):
-                    rp = p.detach().clone().requires_grad_(True)
-                    m(s, rp, n_samples=500).sum().backward()
+            def _nano_fb(m=nano_cone, s=n_subj_bf16, p=rt_inv):
+                rp = p.detach().clone().requires_grad_(True)
+                m(s, rp, n_samples=500, backend="torch" if device.type != "cuda" else "auto").sum().backward()
 
-                def _pou_fb(m=fvr_pou_tri if device.type == "cuda" else fvr_pou_f32, p=rt_inv_fvr, l=lat):
-                    rp = p.detach().clone().requires_grad_(True)
-                    m.forward_pinhole(rp, l).sum().backward()
+            def _pou_fb(m=fvr_pou_tri if device.type == "cuda" else fvr_pou_f32, p=rt_inv_fvr, l=lat):
+                rp = p.detach().clone().requires_grad_(True)
+                m.forward_pinhole(rp, l).sum().backward()
 
-                if device.type == "cuda":
-                    specs.append(("nanodrr triton (bf16 n=500 fwd+bwd)", _nano_fb, True))
+            if device.type == "cuda":
+                specs.append(("nanodrr triton (bf16 n=500 fwd+bwd)", _nano_fb, True))
+                specs.append(("PoU-FVR Triton (2x2x2 bf16 fwd+bwd)", _pou_fb, True))
+            else:
                 specs.append(("PoU-FVR Pinhole (2x2x2 fwd+bwd)", _pou_fb, True))
 
             for name, fn, is_fb in specs:
@@ -428,43 +471,63 @@ def run_benchmark() -> None:
     with torch.no_grad():
         trg_ref = nano_ref(n_subj_f32, rt_inv, n_samples=500, backend="torch" if device.type != "cuda" else "auto")
 
+    ablation_cfgs = (
+        [((2, 2, 2), 48)]
+        if smoke
+        else [
+            ((1, 1, 1), 64),
+            ((1, 1, 1), 80),
+            ((2, 2, 2), 48),
+            ((2, 2, 2), 64),
+            ((2, 2, 2), 80),
+            ((2, 4, 2), 48),
+            ((2, 4, 2), 64),
+            ((2, 4, 2), 80),
+            ((2, 4, 2), 96),
+            ((4, 2, 4), 64),
+            ((4, 4, 2), 80),
+        ]
+    )
     ablation_rows: List[Dict[str, object]] = []
-    for gb in [(1, 1, 1), (2, 2, 2), (2, 4, 2)]:
-        for bres in [48, 64, 80]:
-            if gb == (1, 1, 1) and bres == 48:
-                continue
-            t_p0 = time.perf_counter()
-            m = PerspectiveSlabFVR.from_diffdrr_subject(
-                d_subj_cpu, grid_blocks=gb, block_res=bres, pad_mult=2, use_triton=(device.type == "cuda")
-            ).to(device)
-            t_p = time.perf_counter() - t_p0
-            if device.type == "cuda":
-                m.to_precision(torch.bfloat16)
-            with torch.no_grad():
-                pred = m.forward_pinhole(rt_inv_fvr, lat)
-            ncc_val = _ncc(pred, trg_ref)
-            w_ms, g_ms, p_mb = _cuda_time_ms(
-                lambda mod=m: _eval_nograd(lambda: mod.forward_pinhole(rt_inv_fvr, lat)), warmup=warmup, runs=runs
-            )
-            print(
-                f"  blocks={gb}, block_res={bres:2d}, active_B={m.B:2d}: prep={t_p:.2f}s | "
-                f"gpu={g_ms:.3f} ms | wall={w_ms:.3f} ms | NCC={ncc_val:.4f} | work_mem={p_mb:.1f} MB"
-            )
-            ablation_rows.append({
-                "device": gpu_label,
-                "grid_blocks": str(gb),
-                "block_res": bres,
-                "active_blocks": m.B,
-                "prep_s": round(t_p, 3),
-                "wall_ms": round(w_ms, 4),
-                "gpu_ms": round(g_ms, 4),
-                "ncc_vs_raymarch": round(ncc_val, 5),
-                "working_mem_mb": round(p_mb, 2),
-            })
-            del m, pred
-            gc.collect()
-            if device.type == "cuda":
-                torch.cuda.empty_cache()
+    for gb, bres in ablation_cfgs:
+        t_p0 = time.perf_counter()
+        m = PerspectiveSlabFVR.from_diffdrr_subject(
+            d_subj_cpu, grid_blocks=gb, block_res=bres, pad_mult=2, use_triton=(device.type == "cuda")
+        ).to(device)
+        t_p = time.perf_counter() - t_p0
+        if device.type == "cuda":
+            m.to_precision(torch.bfloat16)
+        with torch.no_grad():
+            pred = m.forward_pinhole(rt_inv_fvr, lat)
+            edge_ncc_val = float(edge_dominant_ncc(pred.float(), trg_ref.float()))
+        ncc_val = _ncc(pred, trg_ref)
+        w_ms, g_ms, p_mb = _cuda_time_ms(
+            lambda mod=m: _eval_nograd(lambda: mod.forward_pinhole(rt_inv_fvr, lat)), warmup=warmup, runs=runs
+        )
+        print(
+            f"  blocks={gb}, block_res={bres:2d}, active_B={m.B:2d}: prep={t_p:.2f}s | "
+            f"gpu={g_ms:.3f} ms | wall={w_ms:.3f} ms | NCC={ncc_val:.4f} | EdgeNCC={edge_ncc_val:.4f} | work_mem={p_mb:.1f} MB"
+        )
+        ablation_rows.append({
+            "device": gpu_label,
+            "grid_blocks": str(gb),
+            "block_res": bres,
+            "active_blocks": m.B,
+            "prep_s": round(t_p, 3),
+            "wall_ms": round(w_ms, 4),
+            "gpu_ms": round(g_ms, 4),
+            "ncc_vs_raymarch": round(ncc_val, 5),
+            "edge_ncc_vs_raymarch": round(edge_ncc_val, 5),
+            "working_mem_mb": round(p_mb, 2),
+        })
+        del m, pred
+        gc.collect()
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+
+    if smoke:
+        print("\n[Smoke mode] Skipping CSV overwrite.")
+        return
 
     with open(out_dir / "exp29_gpu_benchmark.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
@@ -479,4 +542,7 @@ def run_benchmark() -> None:
 
 
 if __name__ == "__main__":
-    run_benchmark()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--smoke", action="store_true", help="Run a tiny CPU sanity pass without overwriting CSVs.")
+    args = parser.parse_args()
+    run_benchmark(smoke=args.smoke)

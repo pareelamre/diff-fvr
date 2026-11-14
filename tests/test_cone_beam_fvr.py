@@ -7,7 +7,12 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from fvr.cone_beam_fvr import PerspectiveSlabFVR, _make_pou_1d, edge_dominant_ncc
-from fvr.triton_slice import fourier_slice_3d_torch, trilinear_slice_analytical_ref
+from fvr.triton_slice import (
+    fourier_slice_3d_torch,
+    pou_pinhole_warp_sum_analytical_ref,
+    pou_pinhole_warp_sum_torch,
+    trilinear_slice_analytical_ref,
+)
 
 
 def _ncc_loss(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
@@ -164,6 +169,76 @@ class TestConeBeamFVR(unittest.TestCase):
         self.assertTrue(torch.allclose(out_torch, out_ref, atol=1e-5))
         self.assertTrue(torch.allclose(u_a.grad, u_b.grad, atol=1e-4, rtol=1e-4))
         self.assertTrue(torch.allclose(v_a.grad, v_b.grad, atol=1e-4, rtol=1e-4))
+
+    def test_pou_pinhole_warp_sum_analytical_parity(self):
+        """Fused SE(3)-invariant pinhole warp+sum matches explicit 4-neighbor bilinear fwd & bwd."""
+        torch.manual_seed(17)
+        B_blk, N_pose, P, H, W = 4, 3, 24, 18, 20
+        imgs0 = torch.randn(B_blk, N_pose, P, P, dtype=torch.float32)
+        d_b0 = torch.full((B_blk, N_pose), 300.0) + torch.randn(B_blk, N_pose) * 15.0
+        cu0 = torch.randn(B_blk, N_pose) * 4.0
+        cv0 = torch.randn(B_blk, N_pose) * 4.0
+        rx_hw = torch.linspace(-0.08, 0.08, W).view(1, W).expand(H, W).contiguous()
+        ry_hw = torch.linspace(-0.07, 0.07, H).view(H, 1).expand(H, W).contiguous()
+        inv_cos_hw = 1.0 / torch.sqrt((1.0 + rx_hw**2 + ry_hw**2)).clamp(min=0.1)
+        inv_ds, c_idx = 0.25, 12.0
+
+        t_a = [x.clone().requires_grad_(True) for x in (imgs0, d_b0, cu0, cv0)]
+        out_torch = pou_pinhole_warp_sum_torch(t_a[0], t_a[1], t_a[2], t_a[3], rx_hw, ry_hw, inv_cos_hw, inv_ds, c_idx)
+        w_out = torch.randn_like(out_torch)
+        (out_torch * w_out).sum().backward()
+
+        t_b = [x.clone().requires_grad_(True) for x in (imgs0, d_b0, cu0, cv0)]
+        out_ref = pou_pinhole_warp_sum_analytical_ref(
+            t_b[0], t_b[1], t_b[2], t_b[3], rx_hw, ry_hw, inv_cos_hw, inv_ds, c_idx
+        )
+        (out_ref * w_out).sum().backward()
+
+        self.assertTrue(torch.allclose(out_torch, out_ref, atol=1e-5))
+        for ga, gb in zip(t_a, t_b):
+            self.assertTrue(torch.allclose(ga.grad, gb.grad, atol=1e-4, rtol=1e-4))
+
+    def test_invariant_pinhole_matches_explicit_ray_tracer(self):
+        """11-tuple SE(3)-invariant forward_pinhole matches 5-tuple explicit trg_pts forward & 6-DoF grads."""
+        torch.manual_seed(23)
+        vol = torch.zeros((48, 48, 48), dtype=torch.float32)
+        vol[14:34, 16:32, 18:30] = 1.5
+        fvr = PerspectiveSlabFVR.from_volume(vol, vox_mm=2.0, grid_blocks=(2, 2, 2), block_res=32)
+        H, W = 28, 28
+        k_inv = torch.tensor(
+            [[1.0 / 300.0, 0.0, -W / 600.0], [0.0, 1.0 / 300.0, -H / 600.0], [0.0, 0.0, 1.0]],
+            dtype=torch.float32,
+        )
+        lattice11 = fvr.make_pinhole_lattice(k_inv, sdd_mm=600.0, height=H, width=W)
+        lattice5 = lattice11[:5]
+
+        def _make_se3(rot_vec: torch.Tensor, trans: torch.Tensor) -> torch.Tensor:
+            skew = torch.zeros((rot_vec.shape[0], 3, 3), dtype=rot_vec.dtype)
+            skew[:, 0, 1], skew[:, 1, 0] = -rot_vec[:, 2], rot_vec[:, 2]
+            skew[:, 0, 2], skew[:, 2, 0] = rot_vec[:, 1], -rot_vec[:, 1]
+            skew[:, 1, 2], skew[:, 2, 1] = -rot_vec[:, 0], rot_vec[:, 0]
+            mats = torch.eye(4, dtype=rot_vec.dtype).unsqueeze(0).repeat(rot_vec.shape[0], 1, 1)
+            mats[:, :3, :3] = torch.matrix_exp(skew)
+            mats[:, :3, 3] = trans
+            return mats
+
+        rot0 = torch.tensor([[0.15, -0.10, 0.08], [-0.20, 0.12, -0.05]], dtype=torch.float32)
+        xyz0 = torch.tensor([[5.0, -4.0, -300.0], [-3.0, 6.0, -310.0]], dtype=torch.float32)
+
+        r_inv = rot0.clone().requires_grad_(True)
+        t_inv = xyz0.clone().requires_grad_(True)
+        out_inv = fvr.forward_pinhole(_make_se3(r_inv, t_inv), lattice11)
+        w_out = torch.randn_like(out_inv)
+        (out_inv * w_out).sum().backward()
+
+        r_exp = rot0.clone().requires_grad_(True)
+        t_exp = xyz0.clone().requires_grad_(True)
+        out_exp = fvr.forward_pinhole(_make_se3(r_exp, t_exp), lattice5)
+        (out_exp * w_out).sum().backward()
+
+        self.assertTrue(torch.allclose(out_inv, out_exp, atol=1e-4, rtol=1e-4))
+        self.assertTrue(torch.allclose(r_inv.grad, r_exp.grad, atol=5e-4, rtol=1e-3))
+        self.assertTrue(torch.allclose(t_inv.grad, t_exp.grad, atol=5e-4, rtol=1e-3))
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .triton_slice import fourier_slice_3d
+from .triton_slice import fourier_slice_3d, pou_pinhole_warp_sum
 
 _SOBEL_CACHE: Dict[Tuple[str, torch.dtype], Tuple[torch.Tensor, torch.Tensor]] = {}
 
@@ -97,7 +97,7 @@ def edge_dominant_ncc(
             u0 = u - u.mean(dim=(-2, -1), keepdim=True)
             v0 = v - v.mean(dim=(-2, -1), keepdim=True)
             num = (u0 * v0).sum(dim=(-2, -1))
-            den = (u0.square().sum(dim=(-2, -1)) * v0.square().sum(dim=(-2, -1))).sqrt() + 1e-8
+            den = (u0.square().sum(dim=(-2, -1)) * v0.square().sum(dim=(-2, -1))).clamp(min=1e-12).sqrt()
             val = (num / den).mean(dim=1)  # average channels -> shape (B,)
             return val.mean() if reduction == "mean" else val
 
@@ -137,8 +137,9 @@ class PerspectiveSlabFVR(nn.Module):
     ):
         super().__init__()
         self.use_triton = bool(use_triton)
-        self._diffdrr_geom_cache: Dict[Tuple, Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = {}
+        self._diffdrr_geom_cache: Dict[Tuple, Tuple[torch.Tensor, ...]] = {}
         self._compiled_project_core = None
+        self._compiled_project_invariant = None
         vol = vol_3d.detach().float().cpu()
         if vol.ndim != 3:
             raise ValueError(f"Expected 3D volume tensor, got shape {tuple(vol.shape)}")
@@ -260,6 +261,7 @@ class PerspectiveSlabFVR(nn.Module):
         """
         self.F_blk_ri = self.F_blk_ri.to(dtype=dtype)
         self._compiled_project_core = None
+        self._compiled_project_invariant = None
         return self
 
     def compile_renderer(self, mode: str = "reduce-overhead", fullgraph: bool = False) -> "PerspectiveSlabFVR":
@@ -270,8 +272,12 @@ class PerspectiveSlabFVR(nn.Module):
         if hasattr(torch, "compile"):
             try:
                 self._compiled_project_core = torch.compile(self._project_core, mode=mode, fullgraph=fullgraph)
+                self._compiled_project_invariant = torch.compile(
+                    self._project_core_invariant, mode=mode, fullgraph=fullgraph
+                )
             except Exception:
                 self._compiled_project_core = None
+                self._compiled_project_invariant = None
         return self
 
     @classmethod
@@ -374,42 +380,16 @@ class PerspectiveSlabFVR(nn.Module):
         B_blk = self.B
         P = self.P
 
-        # 1. Shared O(P^2) Fourier Central Slice across all B_blk sub-volumes & N_pose poses
-        vox_scale = float(P) * self.ds_block
-        u_xyz = u_det[:, [2, 1, 0]] * vox_scale
-        v_xyz = v_det[:, [2, 1, 0]] * vox_scale
-        c_vox = float(P // 2)
-        s_ri = fourier_slice_3d(
-            self.F_blk_ri,
-            u_xyz,
-            v_xyz,
-            self.FX_flat,
-            self.FY_flat,
-            (c_vox, c_vox, c_vox),
-            use_triton=self.use_triton,
-        )  # (B_blk, N_pose, 2, P * P)
-        if s_ri.dtype in (torch.float16, torch.bfloat16):
-            s_ri = s_ri.float()
-        s_ri = s_ri.view(B_blk, N_pose, 2, P, P)
-        slices = torch.complex(s_ri[:, :, 0], s_ri[:, :, 1])
-        imgs = torch.fft.fftshift(
-            torch.fft.ifft2(torch.fft.ifftshift(slices, dim=(-2, -1)), dim=(-2, -1)),
-            dim=(-2, -1),
-        ).real  # (B_blk, N_pose, P, P)
+        imgs = self._slice_and_ifft(u_det, v_det)
+        d_b_parallel, cu, cv = self._compute_block_offsets(srcs, u_det, v_det, n_0)
 
-        # 2. Exact pinhole ray-plane intersection via linearity (zero 5D intermediates)
         rays = trg_pts - srcs.view(N_pose, 1, 1, 3)
         r_hat = rays * torch.rsqrt((rays * rays).sum(dim=-1, keepdim=True).clamp(min=1e-12))
         cos_theta = (r_hat * n_0.view(N_pose, 1, 1, 3)).sum(dim=-1).clamp(min=0.1)
-        inv_cos = 1.0 / cos_theta  # (N_pose, H, W)
+        inv_cos = 1.0 / cos_theta
 
-        ru = (r_hat * u_det.view(N_pose, 1, 1, 3)).sum(dim=-1)  # (N_pose, H, W)
-        rv = (r_hat * v_det.view(N_pose, 1, 1, 3)).sum(dim=-1)  # (N_pose, H, W)
-
-        diff_c = self.centers.view(B_blk, 1, 3) - srcs.view(1, N_pose, 3)  # (B_blk, N_pose, 3)
-        d_b_parallel = (diff_c * n_0.view(1, N_pose, 3)).sum(dim=-1)  # (B_blk, N_pose)
-        cu = (diff_c * u_det.view(1, N_pose, 3)).sum(dim=-1)  # (B_blk, N_pose)
-        cv = (diff_c * v_det.view(1, N_pose, 3)).sum(dim=-1)  # (B_blk, N_pose)
+        ru = (r_hat * u_det.view(N_pose, 1, 1, 3)).sum(dim=-1)
+        rv = (r_hat * v_det.view(N_pose, 1, 1, 3)).sum(dim=-1)
 
         tau = d_b_parallel.view(B_blk, N_pose, 1, 1) * inv_cos.unsqueeze(0)
         xi = tau * ru.unsqueeze(0) - cu.view(B_blk, N_pose, 1, 1)
@@ -431,6 +411,101 @@ class PerspectiveSlabFVR(nn.Module):
         ).view(B_blk, N_pose, H, W)
 
         return sampled.sum(dim=0) * inv_cos
+
+    def _slice_and_ifft(self, u_det: torch.Tensor, v_det: torch.Tensor) -> torch.Tensor:
+        """Evaluate O(P^2) Fourier central slices and invert to real-space slab images ``(B_blk, N_pose, P, P)``."""
+        N_pose = u_det.shape[0]
+        B_blk = self.B
+        P = self.P
+        vox_scale = float(P) * self.ds_block
+        u_xyz = u_det.flip(-1) * vox_scale
+        v_xyz = v_det.flip(-1) * vox_scale
+        c_vox = float(P // 2)
+        s_ri = fourier_slice_3d(
+            self.F_blk_ri,
+            u_xyz,
+            v_xyz,
+            self.FX_flat,
+            self.FY_flat,
+            (c_vox, c_vox, c_vox),
+            use_triton=self.use_triton,
+        )
+        if s_ri.dtype in (torch.float16, torch.bfloat16):
+            s_ri = s_ri.float()
+        s_ri = s_ri.view(B_blk, N_pose, 2, P, P)
+        slices = torch.complex(s_ri[:, :, 0], s_ri[:, :, 1])
+        return torch.fft.fftshift(
+            torch.fft.ifft2(torch.fft.ifftshift(slices, dim=(-2, -1)), dim=(-2, -1)),
+            dim=(-2, -1),
+        ).real
+
+    def _compute_block_offsets(
+        self,
+        srcs: torch.Tensor,
+        u_det: torch.Tensor,
+        v_det: torch.Tensor,
+        n_0: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Compute per-block, per-pose camera-frame center offsets ``(d_b_parallel, cu, cv)`` of shape ``(B_blk, N_pose)``."""
+        B_blk = self.B
+        N_pose = srcs.shape[0]
+        diff_c = self.centers.view(B_blk, 1, 3) - srcs.view(1, N_pose, 3)
+        d_b_parallel = (diff_c * n_0.view(1, N_pose, 3)).sum(dim=-1)
+        cu = (diff_c * u_det.view(1, N_pose, 3)).sum(dim=-1)
+        cv = (diff_c * v_det.view(1, N_pose, 3)).sum(dim=-1)
+        return d_b_parallel, cu, cv
+
+    @staticmethod
+    def _make_ray_cache(
+        src0: torch.Tensor,
+        trg0: torch.Tensor,
+        u0: torch.Tensor,
+        v0: torch.Tensor,
+        n0: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Precompute SE(3)-invariant camera-frame ray coefficients ``(rx_hw, ry_hw, inv_cos_hw, rx_flat, ry_flat, ic_flat)``."""
+        rays0 = (trg0 - src0.view(1, 1, 3)).float()
+        r0_hat = rays0 * torch.rsqrt((rays0 * rays0).sum(dim=-1, keepdim=True).clamp(min=1e-12))
+        cos0 = (r0_hat * n0.float().view(1, 1, 3)).sum(dim=-1).clamp(min=0.1)
+        inv_cos_hw = (1.0 / cos0).contiguous()
+        rx_hw = ((r0_hat * u0.float().view(1, 1, 3)).sum(dim=-1) * inv_cos_hw).contiguous()
+        ry_hw = ((r0_hat * v0.float().view(1, 1, 3)).sum(dim=-1) * inv_cos_hw).contiguous()
+        return (
+            rx_hw,
+            ry_hw,
+            inv_cos_hw,
+            rx_hw.reshape(-1).contiguous(),
+            ry_hw.reshape(-1).contiguous(),
+            inv_cos_hw.reshape(-1).contiguous(),
+        )
+
+    def _project_core_invariant(
+        self,
+        srcs: torch.Tensor,
+        u_det: torch.Tensor,
+        v_det: torch.Tensor,
+        n_0: torch.Tensor,
+        ray_cache: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+    ) -> torch.Tensor:
+        """Projection kernel exploiting SE(3) ray invariance with zero 4D/5D ray intermediates."""
+        imgs = self._slice_and_ifft(u_det, v_det)
+        d_b_parallel, cu, cv = self._compute_block_offsets(srcs, u_det, v_det, n_0)
+        rx_hw, ry_hw, inv_cos_hw, rx_flat, ry_flat, ic_flat = ray_cache
+        return pou_pinhole_warp_sum(
+            imgs,
+            d_b_parallel,
+            cu,
+            cv,
+            rx_hw,
+            ry_hw,
+            inv_cos_hw,
+            rx_flat,
+            ry_flat,
+            ic_flat,
+            1.0 / self.ds_block,
+            float(self.P // 2),
+            use_triton=self.use_triton,
+        )
 
     @staticmethod
     def _extract_detector_basis(
@@ -493,8 +568,8 @@ class PerspectiveSlabFVR(nn.Module):
 
     def cache_diffdrr_geometry(
         self, drr_mod, out_res: int
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Cache camera-frame detector lattice ``(src0, trg0, u0, v0, n0)`` once per DiffDRR config."""
+    ) -> Tuple[torch.Tensor, ...]:
+        """Cache camera-frame detector lattice & SE(3)-invariant ray coefficients once per DiffDRR config."""
         det = drr_mod.detector
         device = self.centers.device
         key = (
@@ -521,24 +596,30 @@ class PerspectiveSlabFVR(nn.Module):
             src0 = src0.squeeze(0).squeeze(0).to(device=device, dtype=torch.float32)
             trg0 = trg0.squeeze(0).view(out_res, out_res, 3).to(device=device, dtype=torch.float32)
             u0, v0, n0 = self._extract_detector_basis(src0.unsqueeze(0), trg0.unsqueeze(0))
-            cached = (src0, trg0, u0.squeeze(0), v0.squeeze(0), n0.squeeze(0))
+            u0s, v0s, n0s = u0.squeeze(0), v0.squeeze(0), n0.squeeze(0)
+            ray_cache = self._make_ray_cache(src0, trg0, u0s, v0s, n0s)
+            cached = (src0, trg0, u0s, v0s, n0s, *ray_cache)
         self._diffdrr_geom_cache[key] = cached
         return cached
 
     def _forward_from_lattice(
         self,
         pose_mats: torch.Tensor,
-        lattice: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+        lattice: Tuple[torch.Tensor, ...],
     ) -> torch.Tensor:
         """Transform a precomputed camera-frame lattice by SE(3) matrices ``(N_pose, 4, 4)`` and project."""
-        src0, trg0, u0, v0, n0 = lattice
+        src0, trg0, u0, v0, n0 = lattice[:5]
         R = pose_mats[:, :3, :3]
         t = pose_mats[:, :3, 3]
         srcs = torch.einsum("nij,j->ni", R, src0) + t
-        trg_pts = torch.einsum("nij,hwj->nhwi", R, trg0) + t[:, None, None, :]
         u_det = torch.einsum("nij,j->ni", R, u0)
         v_det = torch.einsum("nij,j->ni", R, v0)
         n_0 = torch.einsum("nij,j->ni", R, n0)
+        if len(lattice) >= 11:
+            ray_cache = lattice[5:11]
+            fn = self._compiled_project_invariant if self._compiled_project_invariant is not None else self._project_core_invariant
+            return fn(srcs, u_det, v_det, n_0, ray_cache).unsqueeze(1)
+        trg_pts = torch.einsum("nij,hwj->nhwi", R, trg0) + t[:, None, None, :]
         return self.project_rays_batched(srcs, trg_pts, u_det=u_det, v_det=v_det, n_0=n_0).unsqueeze(1)
 
     def forward_diffdrr_batched(self, drr_mod, pose_mats: torch.Tensor, out_res: int) -> torch.Tensor:
@@ -562,9 +643,9 @@ class PerspectiveSlabFVR(nn.Module):
         sdd_mm: float,
         height: int,
         width: int,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, ...]:
         """
-        Precompute camera-space pinhole detector lattice ``(src0, trg0, u0, v0, n0)``
+        Precompute camera-space pinhole detector lattice & SE(3)-invariant ray cache
         matching Hartley-Zisserman ``k_inv`` (compatible with ``nanodrr.camera.make_k_inv``).
         """
         k0 = k_inv.squeeze(0) if k_inv.ndim == 3 else k_inv
@@ -577,12 +658,14 @@ class PerspectiveSlabFVR(nn.Module):
         trg0 = cam_dirs * (float(sdd_mm) / cam_dirs[..., 2:3].clamp(min=1e-6))
         src0 = torch.zeros(3, device=device, dtype=dtype)
         u0, v0, n0 = PerspectiveSlabFVR._extract_detector_basis(src0.unsqueeze(0), trg0.unsqueeze(0))
-        return src0, trg0, u0.squeeze(0), v0.squeeze(0), n0.squeeze(0)
+        u0s, v0s, n0s = u0.squeeze(0), v0.squeeze(0), n0.squeeze(0)
+        ray_cache = PerspectiveSlabFVR._make_ray_cache(src0, trg0, u0s, v0s, n0s)
+        return (src0, trg0, u0s, v0s, n0s, *ray_cache)
 
     def forward_pinhole(
         self,
         rt_inv: torch.Tensor,
-        lattice: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+        lattice: Tuple[torch.Tensor, ...],
     ) -> torch.Tensor:
         """
         Zero-allocation batched pinhole projection from ``rt_inv`` ``(N_pose, 4, 4)``
