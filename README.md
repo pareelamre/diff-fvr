@@ -86,14 +86,22 @@ kernels), with sequential micro-batching (`[mb=16]`) automatically engaged only 
   **`NCC=0.9633`**, `EdgeNCC=0.7319`), fused-Triton forward latency stays nearly flat at
   `1.20–1.26 ms` vs. synthetic ray-marching ground truth.
 - **Bi-Planar `B=64` Multi-Start GPU Registration (`exp30`, 10 DeepFluoro trials, mean init `15.79 mm`, 50 steps):**
-  - `PoU-FVR Triton (2×4×2@80 bf16)`: **`0.945 mm`** mean mTRE (`0.863 mm` median), **`100% < 2 mm`**, `7.177 s` mean (`2.16–2.23 s` steady-state after trial-1 Triton autotune), `1,348 MB` peak VRAM.
-  - `Hybrid PoU-Triton + nanodrr polish`: **`1.490 mm`** mean mTRE (`1.479 mm` median), **`100% < 2 mm`**, **`1.327 s`** mean (`1.14–1.19 s` steady-state), `464 MB` peak VRAM (**`4.72x`** faster than `nanodrr triton+compile`).
-  - `nanodrr triton+compile (bf16 n=500)`: `1.503 mm` mean mTRE, `100% < 2 mm`, `6.263 s` mean, `355 MB` peak VRAM.
+  With `warmup_pinhole` and dynamic Triton loops eliminating Trial-1 cold-start recompilation (`2.129 s` on Trial 1):
+  - `PoU-FVR Triton (2×4×2@80 bf16)`: **`0.950 mm`** mean mTRE (`0.848 mm` median), **`100% < 2 mm`**, **`2.161 s`** mean (`2.11–2.20 s` across all 10 trials), `1,348 MB` peak VRAM (**`2.79x`** faster than `nanodrr triton+compile`).
+  - `Hybrid PoU-Triton + nanodrr polish`: **`1.495 mm`** mean mTRE (`1.475 mm` median), **`100% < 2 mm`**, **`1.341 s`** mean (`1.15–1.24 s` steady-state), `464 MB` peak VRAM (**`4.50x`** faster than `nanodrr triton+compile`).
+  - `nanodrr triton+compile (bf16 n=500)`: `1.503 mm` mean mTRE, `100% < 2 mm`, `6.035 s` mean, `355 MB` peak VRAM.
   - `nanodrr torch (f32 n=500)`: **`OOM`** at `B=64` during autograd on all trials.
+- **6-Subject Real Clinical DeepFluoro GPU Cohort (`exp31`, `subject01`–`subject06`, `18` trials, mean init `12.00 mm`, `H=256, B=64`):**
+  True-pose cone-beam forward parity spans `NCC = 0.9782–0.9986` across all 6 patients.
+  - `Hybrid PoU-Triton + DiffDRR polish`: **`1.069 mm`** mean mTRE (`0.938 mm` median), **`100.0%` (`18/18`) `< 2 mm`** and **`100.0% < 5 mm`**, **`1.818 s`** mean (`1.034 mm`, `0.873 mm` median, `100% < 2 mm` on `n=15` wide-angle pairs `> 15 deg`).
+  - `PoU-FVR Triton Multi-Start (B=64)`: **`1.786 mm`** mean mTRE (`1.907 mm` median), `50.0% < 2 mm`, **`100.0% < 5 mm`**, `2.110 s` mean, **`1,348.0 MB`** peak VRAM (**`4.07x` less VRAM** than DiffDRR).
+  - `DiffDRR Single-Start (f32 B=1)`: `7.216 mm` mean mTRE (`3.130 mm` median), `50.0% < 2 mm`, `61.1% < 5 mm`, `3.259 s` mean, `5,490.8 MB` peak VRAM (trapped at `11.0–21.1 mm` on out-of-basin starts).
   Full CSVs are saved in [outputs/exp29_gpu_benchmark.csv](outputs/exp29_gpu_benchmark.csv),
   [outputs/exp29_pou_ablation.csv](outputs/exp29_pou_ablation.csv),
-  [outputs/exp30_gpu_multistart_reg.csv](outputs/exp30_gpu_multistart_reg.csv), and
-  [outputs/exp30_gpu_multistart_summary.csv](outputs/exp30_gpu_multistart_summary.csv).
+  [outputs/exp30_gpu_multistart_reg.csv](outputs/exp30_gpu_multistart_reg.csv),
+  [outputs/exp30_gpu_multistart_summary.csv](outputs/exp30_gpu_multistart_summary.csv),
+  [outputs/exp31_deepfluoro_gpu_cohort.csv](outputs/exp31_deepfluoro_gpu_cohort.csv), and
+  [outputs/exp31_deepfluoro_gpu_summary.csv](outputs/exp31_deepfluoro_gpu_summary.csv).
 
 ## Projection geometry and physical units
 
@@ -157,6 +165,6 @@ It does not execute the Python registration engine or measure clinical accuracy.
 `src/fvr/` contains renderers, registration, metrics, DICOM loading and CLI code;
 `tests/` contains synthetic regressions and integration scripts; `experiments/`
 contains simulation studies; `docs/` contains the illustrative browser demo;
-`outputs/exp29_gpu_benchmark.csv` and `outputs/exp29_pou_ablation.csv` store
-the verified NVIDIA A100 GPU benchmark and PoU-FVR Pareto tables;
+`outputs/exp29_*.csv`, `outputs/exp30_*.csv`, and `outputs/exp31_*.csv` store
+the verified NVIDIA A100 GPU benchmark, PoU-FVR Pareto, multi-start registration, and 6-subject DeepFluoro cohort tables;
 `outputs/paper_figures/` contains historical generated results.
