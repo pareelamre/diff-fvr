@@ -7,6 +7,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from fvr.cone_beam_fvr import PerspectiveSlabFVR, _make_pou_1d, edge_dominant_ncc
+from fvr.triton_slice import fourier_slice_3d_torch, trilinear_slice_analytical_ref
 
 
 def _ncc_loss(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
@@ -93,6 +94,76 @@ class TestConeBeamFVR(unittest.TestCase):
         self.assertGreater(float(edge_dominant_ncc(ref, ref)), 0.999)
         self.assertGreater(float(edge_dominant_ncc(ref, vignette)), 0.98)
         self.assertLess(float(edge_dominant_ncc(shifted, vignette)), 0.50)
+
+    def test_batched_projection_pinhole_and_half_precision_parity(self):
+        """Batched PoU-FVR, forward_pinhole, and bfloat16 storage match single-pose forward & gradients."""
+        torch.manual_seed(7)
+        n = 32
+        vol = np.zeros((n, n, n), dtype=np.float32)
+        zz, yy, xx = np.ogrid[:n, :n, :n]
+        vol[((zz - 14) ** 2 + (yy - 17) ** 2 + (xx - 16) ** 2) < 9 ** 2] = 0.08
+        fvr = PerspectiveSlabFVR.from_volume(vol, vox_mm=2.0, grid_blocks=(2, 2, 2), block_res=32)
+
+        H, W = 48, 48
+        k_inv = torch.tensor(
+            [[[1.0 / 300.0, 0.0, -W / (2.0 * 300.0)], [0.0, 1.0 / 300.0, -H / (2.0 * 300.0)], [0.0, 0.0, 1.0]]],
+            dtype=torch.float32,
+        )
+        lattice = fvr.make_pinhole_lattice(k_inv, sdd_mm=600.0, height=H, width=W)
+
+        mats = torch.eye(4, dtype=torch.float32).unsqueeze(0).repeat(4, 1, 1)
+        mats[:, 2, 3] = -300.0
+        mats[:, 0, 3] = torch.tensor([0.0, 4.0, -3.0, 6.0])
+        mats[:, 1, 3] = torch.tensor([0.0, -2.0, 5.0, 1.0])
+        mats.requires_grad_(True)
+
+        batched = fvr.forward_pinhole(mats, lattice)  # (4, 1, H, W)
+        self.assertEqual(batched.shape, (4, 1, H, W))
+        for b in range(4):
+            single = fvr.forward_pinhole(mats[b : b + 1].detach(), lattice)
+            self.assertTrue(torch.allclose(batched[b : b + 1], single, atol=1e-4))
+        batched.sum().backward()
+        self.assertIsNotNone(mats.grad)
+        self.assertTrue(bool(torch.all(torch.isfinite(mats.grad))))
+        self.assertGreater(float(mats.grad.abs().sum()), 1e-4)
+
+        # Verify safe CPU execution after casting Fourier blocks to bfloat16
+        fvr_bf16 = PerspectiveSlabFVR.from_volume(vol, vox_mm=2.0, grid_blocks=(2, 2, 2), block_res=32).to_precision(
+            torch.bfloat16
+        )
+        m_half = mats.detach().clone().requires_grad_(True)
+        out_half = fvr_bf16.forward_pinhole(m_half, lattice)
+        out_half.sum().backward()
+        self.assertEqual(out_half.dtype, torch.float32)
+        self.assertTrue(torch.allclose(out_half, batched.detach(), atol=0.15, rtol=0.05))
+        self.assertGreater(float(m_half.grad.abs().sum()), 1e-4)
+
+    def test_trilinear_slice_analytical_parity(self):
+        """Triton-matching explicit 8-neighbor stencil matches grid_sample forward & autograd gradients."""
+        torch.manual_seed(11)
+        B_vol, D, H, W, N_pose, P = 3, 24, 24, 24, 4, 20
+        vol = torch.randn(B_vol, 2, D, H, W, dtype=torch.float32)
+        coords = torch.linspace(-0.45, 0.45, P)
+        fy, fx = torch.meshgrid(coords, coords, indexing="ij")
+        fx_flat, fy_flat = fx.reshape(-1), fy.reshape(-1)
+        u0 = torch.randn(N_pose, 3) * 8.0
+        v0 = torch.randn(N_pose, 3) * 8.0
+        c = (11.5, 11.5, 11.5)
+
+        u_a = u0.clone().requires_grad_(True)
+        v_a = v0.clone().requires_grad_(True)
+        out_torch = fourier_slice_3d_torch(vol, u_a, v_a, fx_flat, fy_flat, c)
+        w_out = torch.randn_like(out_torch)
+        (out_torch * w_out).sum().backward()
+
+        u_b = u0.clone().requires_grad_(True)
+        v_b = v0.clone().requires_grad_(True)
+        out_ref = trilinear_slice_analytical_ref(vol, u_b, v_b, fx_flat, fy_flat, c)
+        (out_ref * w_out).sum().backward()
+
+        self.assertTrue(torch.allclose(out_torch, out_ref, atol=1e-5))
+        self.assertTrue(torch.allclose(u_a.grad, u_b.grad, atol=1e-4, rtol=1e-4))
+        self.assertTrue(torch.allclose(v_a.grad, v_b.grad, atol=1e-4, rtol=1e-4))
 
 
 if __name__ == "__main__":

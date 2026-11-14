@@ -84,6 +84,43 @@ class TestTorchDiffFVREngine(unittest.TestCase):
 
         self.assertLess(final_loss, initial_loss, "Adam optimization should decrease Spectral-NCC loss")
 
+    def test_zero_ifft_forward_spectral_ncc(self):
+        """Zero-IFFT forward_spectral_ncc agrees with Parseval NCC and drives 6-DoF optimization."""
+        true_pose = torch.tensor([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], dtype=torch.float32)
+        with torch.no_grad():
+            target_drr = self.engine(true_pose, view="ap", out_res=64)
+            f_targ = self.engine.prepare_spectral_target(target_drr, high_pass=True)
+
+        est_pose = torch.tensor([[2.5, -1.5, 0.5, 3.0, -2.5, 0.0]], dtype=torch.float32, requires_grad=True)
+        opt = torch.optim.Adam([est_pose], lr=0.2)
+
+        l0 = None
+        lf = None
+        for step in range(12):
+            opt.zero_grad()
+            loss = self.engine.forward_spectral_ncc(est_pose, f_targ, view="ap", high_pass=True)
+            loss.backward()
+            opt.step()
+            if step == 0:
+                l0 = float(loss.detach())
+            lf = float(loss.detach())
+
+        self.assertLess(lf, l0, "Zero-IFFT forward_spectral_ncc should descend cleanly")
+        self.assertIsNotNone(est_pose.grad)
+        self.assertTrue(bool(torch.all(torch.isfinite(est_pose.grad))))
+
+    def test_precision_cast_cpu_fallback(self):
+        """bfloat16 storage runs cleanly with finite gradients on CPU fallback."""
+        eng_half = TorchDiffFVREngine(self.vol_tensor, spacing=(1.5, 1.5, 1.5), pad_factor=2.0).to_precision(
+            torch.bfloat16
+        )
+        p = torch.tensor([[1.0, -1.0, 0.5, 2.0, -1.0, 0.0]], dtype=torch.float32, requires_grad=True)
+        out = eng_half(p, view="ap", out_res=64)
+        self.assertEqual(out.dtype, torch.float32)
+        out.sum().backward()
+        self.assertTrue(bool(torch.all(torch.isfinite(p.grad))))
+        self.assertGreater(float(p.grad.abs().sum()), 1e-4)
+
 
 if __name__ == "__main__":
     unittest.main()

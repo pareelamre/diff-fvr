@@ -15,6 +15,29 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .triton_slice import fourier_slice_3d
+
+_SOBEL_CACHE: Dict[Tuple[str, torch.dtype], Tuple[torch.Tensor, torch.Tensor]] = {}
+
+
+def _get_sobel_kernels(device: torch.device, dtype: torch.dtype) -> Tuple[torch.Tensor, torch.Tensor]:
+    key = (str(device), dtype)
+    cached = _SOBEL_CACHE.get(key)
+    if cached is not None:
+        return cached
+    kx = torch.tensor(
+        [[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]],
+        dtype=dtype,
+        device=device,
+    ).view(1, 1, 3, 3)
+    ky = torch.tensor(
+        [[-1.0, -2.0, -1.0], [0.0, 0.0, 0.0], [1.0, 2.0, 1.0]],
+        dtype=dtype,
+        device=device,
+    ).view(1, 1, 3, 3)
+    _SOBEL_CACHE[key] = (kx, ky)
+    return kx, ky
+
 
 def _make_pou_1d(length: int, n_blocks: int, overlap: float) -> Tuple[list, float]:
     """Build 1D raised-cosine Partition-of-Unity windows summing identically to 1.0."""
@@ -50,6 +73,7 @@ def edge_dominant_ncc(
     target: torch.Tensor,
     border_crop: Optional[int] = None,
     multiscale_weight: float = 0.25,
+    reduction: str = "mean",
 ) -> torch.Tensor:
     """
     Edge-dominant Gradient-NCC similarity resistant to fluoroscopic diaphragm vignetting.
@@ -62,16 +86,7 @@ def edge_dominant_ncc(
     crop = max(4, H // 8) if border_crop is None else int(border_crop)
 
     def _grad_ncc(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-        kx = torch.tensor(
-            [[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]],
-            dtype=a.dtype,
-            device=a.device,
-        ).view(1, 1, 3, 3)
-        ky = torch.tensor(
-            [[-1.0, -2.0, -1.0], [0.0, 0.0, 0.0], [1.0, 2.0, 1.0]],
-            dtype=a.dtype,
-            device=a.device,
-        ).view(1, 1, 3, 3)
+        kx, ky = _get_sobel_kernels(a.device, a.dtype)
         sl = slice(crop, -crop if crop > 0 else None)
         ax = F.conv2d(a, kx, padding=1)[..., sl, sl]
         ay = F.conv2d(a, ky, padding=1)[..., sl, sl]
@@ -83,7 +98,8 @@ def edge_dominant_ncc(
             v0 = v - v.mean(dim=(-2, -1), keepdim=True)
             num = (u0 * v0).sum(dim=(-2, -1))
             den = (u0.square().sum(dim=(-2, -1)) * v0.square().sum(dim=(-2, -1))).sqrt() + 1e-8
-            return (num / den).mean()
+            val = (num / den).mean(dim=1)  # average channels -> shape (B,)
+            return val.mean() if reduction == "mean" else val
 
         return 0.5 * (_ncc(ax, bx) + _ncc(ay, by))
 
@@ -116,8 +132,13 @@ class PerspectiveSlabFVR(nn.Module):
         pad_mult: int = 2,
         overlap: float = 0.25,
         energy_thresh: float = 1e-4,
+        dtype: torch.dtype = torch.float32,
+        use_triton: bool = True,
     ):
         super().__init__()
+        self.use_triton = bool(use_triton)
+        self._diffdrr_geom_cache: Dict[Tuple, Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = {}
+        self._compiled_project_core = None
         vol = vol_3d.detach().float().cpu()
         if vol.ndim != 3:
             raise ValueError(f"Expected 3D volume tensor, got shape {tuple(vol.shape)}")
@@ -222,13 +243,36 @@ class PerspectiveSlabFVR(nn.Module):
             torch.fft.fftn(torch.fft.ifftshift(stack, dim=(-3, -2, -1)), dim=(-3, -2, -1)),
             dim=(-3, -2, -1),
         )
-        self.register_buffer("F_blk_ri", torch.stack([F_blk.real, F_blk.imag], dim=1))
+        self.register_buffer("F_blk_ri", torch.stack([F_blk.real, F_blk.imag], dim=1).to(dtype=dtype))
         self.register_buffer("centers", torch.tensor(centers, dtype=torch.float32))
 
         freqs = torch.fft.fftshift(torch.fft.fftfreq(self.P, d=self.ds_block))
         fy, fx = torch.meshgrid(freqs, freqs, indexing="ij")
         self.register_buffer("FX", fx)
         self.register_buffer("FY", fy)
+        self.register_buffer("FX_flat", fx.reshape(-1).contiguous())
+        self.register_buffer("FY_flat", fy.reshape(-1).contiguous())
+
+    def to_precision(self, dtype: torch.dtype) -> "PerspectiveSlabFVR":
+        """
+        Cast 3D Fourier slab storage ``F_blk_ri`` to reduced precision (e.g. ``torch.bfloat16``
+        or ``torch.float16`` on CUDA) while keeping geometric coordinates in ``float32``.
+        """
+        self.F_blk_ri = self.F_blk_ri.to(dtype=dtype)
+        self._compiled_project_core = None
+        return self
+
+    def compile_renderer(self, mode: str = "reduce-overhead", fullgraph: bool = False) -> "PerspectiveSlabFVR":
+        """
+        Compile the core tensor projection graph with ``torch.compile`` (CUDA Graphs when on GPU).
+        Falls back gracefully if compilation is unavailable in the runtime environment.
+        """
+        if hasattr(torch, "compile"):
+            try:
+                self._compiled_project_core = torch.compile(self._project_core, mode=mode, fullgraph=fullgraph)
+            except Exception:
+                self._compiled_project_core = None
+        return self
 
     @classmethod
     def from_volume(
@@ -303,76 +347,247 @@ class PerspectiveSlabFVR(nn.Module):
             energy_thresh=1e-3,
         )
 
+    def _project_core(
+        self,
+        srcs: torch.Tensor,
+        trg_pts: torch.Tensor,
+        u_det: torch.Tensor,
+        v_det: torch.Tensor,
+        n_0: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Core batched cone-beam projection kernel for ``N_pose`` poses.
+
+        Args:
+            srcs: ``(N_pose, 3)`` X-ray source positions in world coordinates.
+            trg_pts: ``(N_pose, H, W, 3)`` detector pixel lattice points.
+            u_det: ``(N_pose, 3)`` unit detector horizontal axis.
+            v_det: ``(N_pose, 3)`` unit detector vertical axis.
+            n_0: ``(N_pose, 3)`` unit optical axis pointing source -> detector.
+
+        Returns:
+            ``(N_pose, H, W)`` rendered line-integral projections.
+        """
+        N_pose, H, W, _ = trg_pts.shape
+        B_blk = self.B
+        P = self.P
+
+        # 1. Shared O(P^2) Fourier Central Slice across all B_blk sub-volumes & N_pose poses
+        vox_scale = float(P) * self.ds_block
+        u_xyz = u_det[:, [2, 1, 0]] * vox_scale
+        v_xyz = v_det[:, [2, 1, 0]] * vox_scale
+        c_vox = float(P // 2)
+        s_ri = fourier_slice_3d(
+            self.F_blk_ri,
+            u_xyz,
+            v_xyz,
+            self.FX_flat,
+            self.FY_flat,
+            (c_vox, c_vox, c_vox),
+            use_triton=self.use_triton,
+        )  # (B_blk, N_pose, 2, P * P)
+        if s_ri.dtype in (torch.float16, torch.bfloat16):
+            s_ri = s_ri.float()
+        s_ri = s_ri.view(B_blk, N_pose, 2, P, P)
+        slices = torch.complex(s_ri[:, :, 0], s_ri[:, :, 1])
+        imgs = torch.fft.fftshift(
+            torch.fft.ifft2(torch.fft.ifftshift(slices, dim=(-2, -1)), dim=(-2, -1)),
+            dim=(-2, -1),
+        ).real  # (B_blk, N_pose, P, P)
+
+        # 2. Exact pinhole ray-plane intersection via linearity (zero 5D intermediates)
+        rays = trg_pts - srcs.view(N_pose, 1, 1, 3)
+        r_hat = rays * torch.rsqrt((rays * rays).sum(dim=-1, keepdim=True).clamp(min=1e-12))
+        cos_theta = (r_hat * n_0.view(N_pose, 1, 1, 3)).sum(dim=-1).clamp(min=0.1)
+        inv_cos = 1.0 / cos_theta  # (N_pose, H, W)
+
+        ru = (r_hat * u_det.view(N_pose, 1, 1, 3)).sum(dim=-1)  # (N_pose, H, W)
+        rv = (r_hat * v_det.view(N_pose, 1, 1, 3)).sum(dim=-1)  # (N_pose, H, W)
+
+        diff_c = self.centers.view(B_blk, 1, 3) - srcs.view(1, N_pose, 3)  # (B_blk, N_pose, 3)
+        d_b_parallel = (diff_c * n_0.view(1, N_pose, 3)).sum(dim=-1)  # (B_blk, N_pose)
+        cu = (diff_c * u_det.view(1, N_pose, 3)).sum(dim=-1)  # (B_blk, N_pose)
+        cv = (diff_c * v_det.view(1, N_pose, 3)).sum(dim=-1)  # (B_blk, N_pose)
+
+        tau = d_b_parallel.view(B_blk, N_pose, 1, 1) * inv_cos.unsqueeze(0)
+        xi = tau * ru.unsqueeze(0) - cu.view(B_blk, N_pose, 1, 1)
+        eta = tau * rv.unsqueeze(0) - cv.view(B_blk, N_pose, 1, 1)
+
+        inv_ds = 1.0 / self.ds_block
+        inv_pm1 = 2.0 / float(P - 1)
+        c_idx = float(P // 2)
+        gu = (xi * inv_ds + c_idx) * inv_pm1 - 1.0
+        gv = (eta * inv_ds + c_idx) * inv_pm1 - 1.0
+        grid_2d = torch.stack([gu, gv], dim=-1).view(B_blk * N_pose, H, W, 2)
+
+        sampled = F.grid_sample(
+            imgs.reshape(B_blk * N_pose, 1, P, P),
+            grid_2d,
+            mode="bilinear",
+            padding_mode="zeros",
+            align_corners=True,
+        ).view(B_blk, N_pose, H, W)
+
+        return sampled.sum(dim=0) * inv_cos
+
+    @staticmethod
+    def _extract_detector_basis(
+        srcs: torch.Tensor,
+        trg_pts: torch.Tensor,
+        u_det: Optional[torch.Tensor] = None,
+        v_det: Optional[torch.Tensor] = None,
+        n_0: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Compute orthonormal detector axes ``(u_det, v_det, n_0)`` of shape ``(N_pose, 3)``."""
+        c_det = trg_pts.mean(dim=(1, 2))
+        if u_det is None:
+            u_raw = trg_pts[:, 0, -1] - trg_pts[:, 0, 0]
+            u_det = u_raw / (u_raw.norm(dim=-1, keepdim=True) + 1e-12)
+        if v_det is None:
+            v_raw = trg_pts[:, -1, 0] - trg_pts[:, 0, 0]
+            v_det = v_raw / (v_raw.norm(dim=-1, keepdim=True) + 1e-12)
+        if n_0 is None:
+            n_raw = torch.cross(v_det, u_det, dim=-1)
+            n_0 = n_raw / (n_raw.norm(dim=-1, keepdim=True) + 1e-12)
+            flip = ((c_det - srcs) * n_0).sum(dim=-1, keepdim=True) < 0
+            n_0 = torch.where(flip, -n_0, n_0)
+        return u_det, v_det, n_0
+
+    def project_rays_batched(
+        self,
+        srcs: torch.Tensor,
+        trg_pts: torch.Tensor,
+        u_det: Optional[torch.Tensor] = None,
+        v_det: Optional[torch.Tensor] = None,
+        n_0: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """
+        Render batched cone-beam line integrals for ``srcs`` ``(N_pose, 3)`` and
+        detector lattices ``trg_pts`` ``(N_pose, H, W, 3)``.
+        """
+        u_det, v_det, n_0 = self._extract_detector_basis(srcs, trg_pts, u_det, v_det, n_0)
+        fn = self._compiled_project_core if self._compiled_project_core is not None else self._project_core
+        return fn(srcs, trg_pts, u_det, v_det, n_0)
+
     def project_rays(
         self,
         src: torch.Tensor,
         trg_pts: torch.Tensor,
-        u_det: torch.Tensor = None,
-        v_det: torch.Tensor = None,
-        n_0: torch.Tensor = None,
+        u_det: Optional[torch.Tensor] = None,
+        v_det: Optional[torch.Tensor] = None,
+        n_0: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Render cone-beam line integrals for any source point `src` (3,) and
         detector lattice `trg_pts` (H, W, 3) in the volume's coordinate frame.
         """
-        c_det = trg_pts.mean(dim=(0, 1))
-        if u_det is None:
-            u_det = trg_pts[0, -1] - trg_pts[0, 0]
-            u_det = u_det / (u_det.norm() + 1e-12)
-        if v_det is None:
-            v_det = trg_pts[-1, 0] - trg_pts[0, 0]
-            v_det = v_det / (v_det.norm() + 1e-12)
-        if n_0 is None:
-            n_0 = torch.cross(v_det, u_det, dim=0)
-            n_0 = n_0 / (n_0.norm() + 1e-12)
-            if torch.dot(c_det - src, n_0) < 0:
-                n_0 = -n_0
+        return self.project_rays_batched(
+            src.unsqueeze(0),
+            trg_pts.unsqueeze(0),
+            None if u_det is None else u_det.unsqueeze(0),
+            None if v_det is None else v_det.unsqueeze(0),
+            None if n_0 is None else n_0.unsqueeze(0),
+        ).squeeze(0)
 
-        # 1. Shared O(P^2) Fourier Central Slice across all B sub-volumes
-        k_grid = self.FX.unsqueeze(-1) * u_det + self.FY.unsqueeze(-1) * v_det
-        idx = k_grid * (self.P * self.ds_block) + (self.P // 2)
-        g = 2.0 * idx / float(self.P - 1) - 1.0
-        grid_3d = torch.stack([g[..., 2], g[..., 1], g[..., 0]], dim=-1)[None, None].expand(
-            self.B, -1, -1, -1, -1
+    def cache_diffdrr_geometry(
+        self, drr_mod, out_res: int
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Cache camera-frame detector lattice ``(src0, trg0, u0, v0, n0)`` once per DiffDRR config."""
+        det = drr_mod.detector
+        device = self.centers.device
+        key = (
+            float(det.sdd),
+            int(out_res),
+            int(det.height),
+            int(det.width),
+            float(det.delx),
+            float(det.dely),
+            float(det.x0),
+            float(det.y0),
+            bool(getattr(det, "reverse_x_axis", False)),
+            str(device),
         )
+        cached = self._diffdrr_geom_cache.get(key)
+        if cached is not None:
+            return cached
 
-        s_ri = F.grid_sample(
-            self.F_blk_ri, grid_3d, mode="bilinear", padding_mode="zeros", align_corners=True
-        ).squeeze(2)
-        slices = torch.complex(s_ri[:, 0], s_ri[:, 1])
-        imgs = torch.fft.fftshift(
-            torch.fft.ifft2(torch.fft.ifftshift(slices, dim=(-2, -1)), dim=(-2, -1)),
-            dim=(-2, -1),
-        ).real
+        from diffdrr.pose import RigidTransform
 
-        # 2. Exact pinhole ray-plane intersection + 1/cos(theta) path obliquity
-        rays = trg_pts - src.view(1, 1, 3)
-        r_hat = rays / rays.norm(dim=-1, keepdim=True).clamp(min=1e-6)
-        cos_theta = (r_hat * n_0.view(1, 1, 3)).sum(dim=-1).clamp(min=0.1)
+        ident = RigidTransform(torch.eye(4, device=device, dtype=torch.float32).unsqueeze(0))
+        with torch.no_grad():
+            src0, trg0 = det(ident, calibration=None)
+            src0 = src0.squeeze(0).squeeze(0).to(device=device, dtype=torch.float32)
+            trg0 = trg0.squeeze(0).view(out_res, out_res, 3).to(device=device, dtype=torch.float32)
+            u0, v0, n0 = self._extract_detector_basis(src0.unsqueeze(0), trg0.unsqueeze(0))
+            cached = (src0, trg0, u0.squeeze(0), v0.squeeze(0), n0.squeeze(0))
+        self._diffdrr_geom_cache[key] = cached
+        return cached
 
-        d_b_parallel = ((self.centers - src.unsqueeze(0)) * n_0.unsqueeze(0)).sum(dim=-1)
-        tau = d_b_parallel[:, None, None] / cos_theta.unsqueeze(0)
-        pts_plane = src.view(1, 1, 1, 3) + tau.unsqueeze(-1) * r_hat.unsqueeze(0)
+    def _forward_from_lattice(
+        self,
+        pose_mats: torch.Tensor,
+        lattice: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+    ) -> torch.Tensor:
+        """Transform a precomputed camera-frame lattice by SE(3) matrices ``(N_pose, 4, 4)`` and project."""
+        src0, trg0, u0, v0, n0 = lattice
+        R = pose_mats[:, :3, :3]
+        t = pose_mats[:, :3, 3]
+        srcs = torch.einsum("nij,j->ni", R, src0) + t
+        trg_pts = torch.einsum("nij,hwj->nhwi", R, trg0) + t[:, None, None, :]
+        u_det = torch.einsum("nij,j->ni", R, u0)
+        v_det = torch.einsum("nij,j->ni", R, v0)
+        n_0 = torch.einsum("nij,j->ni", R, n0)
+        return self.project_rays_batched(srcs, trg_pts, u_det=u_det, v_det=v_det, n_0=n_0).unsqueeze(1)
 
-        rel = pts_plane - self.centers[:, None, None, :]
-        xi = (rel * u_det.view(1, 1, 1, 3)).sum(dim=-1)
-        eta = (rel * v_det.view(1, 1, 1, 3)).sum(dim=-1)
-
-        gu = 2.0 * (xi / self.ds_block + (self.P // 2)) / float(self.P - 1) - 1.0
-        gv = 2.0 * (eta / self.ds_block + (self.P // 2)) / float(self.P - 1) - 1.0
-        grid_2d = torch.stack([gu, gv], dim=-1)
-        sampled = F.grid_sample(
-            imgs.unsqueeze(1), grid_2d, mode="bilinear", padding_mode="zeros", align_corners=True
-        ).squeeze(1)
-
-        return (sampled / cos_theta.unsqueeze(0)).sum(dim=0)
+    def forward_diffdrr_batched(self, drr_mod, pose_mats: torch.Tensor, out_res: int) -> torch.Tensor:
+        """
+        Render ``(N_pose, 1, out_res, out_res)`` cone-beam DRRs from SE(3) ``pose_mats``
+        ``(N_pose, 4, 4)`` using cached camera geometry (zero per-step detector setup).
+        """
+        lattice = self.cache_diffdrr_geometry(drr_mod, out_res)
+        return self._forward_from_lattice(pose_mats, lattice)
 
     def forward_diffdrr(self, drr_mod, pose, out_res: int) -> torch.Tensor:
-        """Render cone-beam DRR tensor `(1, 1, out_res, out_res)` for a DiffDRR `DRR` module & `RigidTransform`."""
-        src, trg = drr_mod.detector(pose, calibration=None)
-        src = src.squeeze(0).squeeze(0)
-        trg_pts = trg.squeeze(0).view(out_res, out_res, 3)
-        return self.project_rays(src, trg_pts).unsqueeze(0).unsqueeze(0)
+        """Render cone-beam DRR tensor ``(B, 1, out_res, out_res)`` for a DiffDRR ``RigidTransform``."""
+        mat = pose.matrix
+        if mat.ndim == 2:
+            mat = mat.unsqueeze(0)
+        return self.forward_diffdrr_batched(drr_mod, mat, out_res)
+
+    @staticmethod
+    def make_pinhole_lattice(
+        k_inv: torch.Tensor,
+        sdd_mm: float,
+        height: int,
+        width: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Precompute camera-space pinhole detector lattice ``(src0, trg0, u0, v0, n0)``
+        matching Hartley-Zisserman ``k_inv`` (compatible with ``nanodrr.camera.make_k_inv``).
+        """
+        k0 = k_inv.squeeze(0) if k_inv.ndim == 3 else k_inv
+        device, dtype = k0.device, torch.float32
+        cols = torch.arange(width, device=device, dtype=dtype) + 0.5
+        rows = torch.arange(height, device=device, dtype=dtype) + 0.5
+        rr, cc = torch.meshgrid(rows, cols, indexing="ij")
+        pix = torch.stack([cc, rr, torch.ones_like(cc)], dim=-1)  # (H, W, 3)
+        cam_dirs = torch.einsum("ij,hwj->hwi", k0.to(dtype=dtype), pix)
+        trg0 = cam_dirs * (float(sdd_mm) / cam_dirs[..., 2:3].clamp(min=1e-6))
+        src0 = torch.zeros(3, device=device, dtype=dtype)
+        u0, v0, n0 = PerspectiveSlabFVR._extract_detector_basis(src0.unsqueeze(0), trg0.unsqueeze(0))
+        return src0, trg0, u0.squeeze(0), v0.squeeze(0), n0.squeeze(0)
+
+    def forward_pinhole(
+        self,
+        rt_inv: torch.Tensor,
+        lattice: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+    ) -> torch.Tensor:
+        """
+        Zero-allocation batched pinhole projection from ``rt_inv`` ``(N_pose, 4, 4)``
+        and a precomputed ``lattice`` from ``make_pinhole_lattice``.
+        Returns ``(N_pose, 1, H, W)``.
+        """
+        return self._forward_from_lattice(rt_inv, lattice)
 
     def forward_carm_view(
         self,
@@ -508,20 +723,22 @@ class PerspectiveSlabFVR(nn.Module):
                 torch.tensor(rng.uniform(-trans_mm, trans_mm, size=(1, 3)), dtype=torch.float32),
             ))
 
-        # Stage 1: Coarse candidate screening
+        # Stage 1: Batched coarse candidate screening
         scored = []
+        r_stack = torch.cat([cr for cr, _ in cands], dim=0).to(device=self.centers.device)
+        t_stack = torch.cat([ct for _, ct in cands], dim=0).to(device=self.centers.device)
         with torch.no_grad():
-            for cr, ct in cands:
-                pa, pb = _pose_pair(cr, ct)
-                lv = float(
-                    _loss(
-                        self.forward_diffdrr(c_drrA, pa, out_coarse),
-                        self.forward_diffdrr(c_drrB, pb, out_coarse),
-                        c_xrA,
-                        c_xrB,
-                    )
-                )
-                scored.append((lv, cr, ct))
+            dT_all = convert(r_stack, t_stack, parameterization="euler_angles", convention="ZYX").matrix
+            pA_mats = dT_all @ pose_init.matrix.to(device=self.centers.device)
+            pB_mats = pA_mats @ T_AB.matrix.to(device=self.centers.device)
+            imA_all = self.forward_diffdrr_batched(c_drrA, pA_mats, out_coarse)
+            imB_all = self.forward_diffdrr_batched(c_drrB, pB_mats, out_coarse)
+            losses = 1.0 - 0.5 * (
+                edge_dominant_ncc(imA_all, c_xrA, reduction="none")
+                + edge_dominant_ncc(imB_all, c_xrB, reduction="none")
+            )
+            for idx, (cr, ct) in enumerate(cands):
+                scored.append((float(losses[idx]), cr, ct))
         scored.sort(key=lambda x: x[0])
 
         # Stage 2: Short coarse-basin optimization on Top-K survivors, re-ranked at fine resolution
