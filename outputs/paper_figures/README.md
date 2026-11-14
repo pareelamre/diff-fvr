@@ -23,6 +23,6 @@ against acquired patient fluoroscopy or a multi-patient cohort. Old figures and
 the browser demonstration must not be used as evidence of surgical suitability.
 
 Calibrated physical-millimeter and cone-beam validation is provided separately in
-`table25`–`table28`, `exp29`–`exp32` CSVs (`outputs/exp*.csv`), and
-`fig25`–`fig31` (including `exp32c` cone-beam GPU benchmarks on Kaggle Lumbar
-Spine CT, AMOS 0001 Thoracolumbar CT, and GE Clinical CT).
+`table25`–`table28`, `exp29`–`exp33` CSVs (`outputs/exp*.csv`), and
+`fig25`–`fig32` (including `exp32c` and `exp33` cone-beam GPU benchmarks on Kaggle Lumbar
+Spine CT, AMOS 0001 Thoracolumbar CT, GE Clinical CT, and paired `DeepFluoro`).

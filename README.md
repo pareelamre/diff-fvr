@@ -15,7 +15,36 @@ Author: Pareel Amre · TU Dresden · `pareel.amre@gmail.com` · License: [MIT](h
 
 ## Benchmarks vs. Spatial DRR Renderers (`DiffDRR` & `nanodrr`)
 
-### 1. Matched-Batch, Wide-Basin & Clinical Spine/Pelvis Rebuttal (`exp32`, NVIDIA A100-SXM4-40GB)
+### 1. Soft-Spot Architectural & Calibration Fixes (`exp33`, NVIDIA A100-SXM4-40GB)
+
+Two fixes directly resolve the remaining failure modes from `exp32`:
+1. **Isotropic `4x4x4@64` `bf16` PoU Slab Partition** eliminates lateral/CC magnification drift on wide-field CT cohorts without changing the edge-dominant NCC loss (dropping `GE Clinical CT` from `9.771` to **`1.406 mm`**, `AMOS 0001` from `3.749` to **`1.381 mm`**, and lifting standalone `DeepFluoro` `< 2 mm` rate from `58.3%` to **`91.7%`**, `1.423 mm` median).
+2. **Per-Axis `{-0.5, 0, +0.5}³` Isocenter Parity Calibration + `top_k=4` Multi-Survivor `f32` `nanodrr` Polish (`< 0.5 GB`)** fixes the `subject05` parity ambiguity and `K=1` basin-handoff misses while holding peak VRAM to **`464.1 MB`** (`20` `f32` spatial steps).
+
+#### Real Clinical DeepFluoro Cohort (`exp33a`, `N=24`: 12 Bounded Tier 1 + 12 Unanchored Tier 2, `H=256`, `B=64`)
+
+| Cohort Subset | Method | `n` | Median [Q25, Q75] mTRE | `< 2 mm` | `< 5 mm` | `prep` / `reg` (Total) | Peak VRAM |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **All (`Tier 1+2`)** | **Hybrid PoU-Triton (`K=4`) + `nanodrr` `f32` (`<0.5 GB`)** | **24** | **0.835 mm** `[0.756, 0.997]` | **100.0%** | **100.0%** | `0.445` / **1.368 s** (`1.813 s`) | **464.1 MB** |
+| All (`Tier 1+2`) | `Hybrid PoU-Triton (K=4) + DiffDRR polish` | 24 | **0.857 mm** `[0.825, 0.948]` | **100.0%** | **100.0%** | `0.445` / `6.607 s` (`7.051 s`) | 21,948.2 MB |
+| All (`Tier 1+2`) | `PoU-FVR Triton (4x4x4@64 bf16, B=64)` | 24 | **1.423 mm** `[1.020, 1.868]` | **91.7%** | **100.0%** | `1.950` / `4.475 s` (`6.425 s`) | 3,367.5 MB |
+| **Tier 2 Wide-Basin** | **Hybrid PoU-Triton (`K=4`) + `nanodrr` `f32` (`<0.5 GB`)** | **12** | **0.828 mm** `[0.756, 1.056]` | **100.0%** | **100.0%** | `0.445` / **1.165 s** (`1.609 s`) | **464.1 MB** |
+| Tier 2 Wide-Basin | `PoU-FVR Triton (4x4x4@64 bf16, B=64)` | 12 | `1.430 mm` `[1.036, 1.867]` | **100.0%** | **100.0%** | `1.950` / `4.489 s` (`6.439 s`) | 3,367.5 MB |
+| **Wide-Angle (`>15°`)** | **Hybrid PoU-Triton (`K=4`) + `nanodrr` `f32` (`<0.5 GB`)** | **20** | **0.807 mm** `[0.720, 0.895]` | **100.0%** | **100.0%** | `0.425` / **1.342 s** (`1.767 s`) | **464.1 MB** |
+
+#### Clinical Spine & Abdominal CT Cone-Beam GPU Fixes (`exp33c`, `B=64`, Poisson-Gaussian Noise)
+
+| CT Cohort (`H²`) | Method | Trials | Median [Q25, Q75] mTRE | `< 2 mm` | `prep` / `reg` | Peak VRAM |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **Kaggle Lumbar Spine (`256²`)** | `PoU-FVR Triton (4x4x4@64 bf16)` | 6 | **0.307 mm** `[0.295, 0.314]` | **100.0%** | `1.757` / `4.412 s` | 3,376.1 MB |
+| **Kaggle Lumbar Spine (`256²`)** | `Hybrid PoU-Triton (K=4) + nanodrr f32 (<0.5 GB)` | 6 | **0.046 mm** `[0.044, 0.088]` | 83.3% | `0.270` / **1.170 s** | **464.0 MB** |
+| **Kaggle Lumbar Spine (`512²`)** | `PoU-FVR Triton (4x4x4@64 bf16)` / `Hybrid+nano (K=4)` | 4 | **0.461** / `0.642 mm` | **100.0% / 100.0%** | `6.986` / `1.962 s` reg | 3,520.1 / 907.6 MB |
+| **AMOS 0001 Thoracolumbar (`256²`)** | `PoU-FVR Triton (4x4x4@64 bf16)` / `Hybrid+nano (K=4)` | 6 | **1.381** / **0.150 mm** | **100.0% / 100.0%** | `3.937` / **1.201 s** reg | 2,856.9 / **464.8 MB** |
+| **GE Clinical CT (`256²`)** | `PoU-FVR Triton (4x4x4@64 bf16)` / `Hybrid+nano (K=4)` | 6 | **1.406** / **0.052 mm** | **100.0% / 100.0%** | `4.330` / **1.206 s** reg | 3,272.1 / **464.0 MB** |
+
+---
+
+### 2. Matched-Batch, Wide-Basin & Clinical Spine/Pelvis Rebuttal (`exp32`, NVIDIA A100-SXM4-40GB)
 
 All `exp32` experiments report **offline preparation (`prep_s`) separately from online registration (`reg_s`)**, median [Q25, Q75] mTRE in physical mm, and paired Wilcoxon signed-rank tests (`p`).
 
@@ -58,7 +87,7 @@ Evaluated on true CT Hounsfield volumes under calibrated cone-beam geometry agai
 
 ---
 
-### 2. Earlier A100 Cohort & Multi-Start Registration Studies (`exp30`–`exp31`)
+### 3. Earlier A100 Cohort & Multi-Start Registration Studies (`exp30`–`exp31`)
 
 #### Real Paired Clinical DeepFluoro Cohort (`exp31`, All 6 Subjects, 18 Trials, `H=256`, `B=64`, Mean Init `12.002 mm`)
 
@@ -150,15 +179,15 @@ Fused-Triton forward wall latency remains flat at `1.20–1.26 ms` across 11 blo
 | **`exp26` (`DeepFluoro subject01`–`06`, CPU)** | Multi-subject 6-DoF cohort (`N=6`) | **`88.3x`** forward speedup (`14.7 ms` vs. `1,248.1 ms`); Hybrid `3.41 mm` (`123.3 s`) vs. DiffDRR `3.73 mm` (`158.0 s`) |
 | **`exp28` (GE DICOM C-Arms, `600/900`–`1000/1400 mm`)** | Uncalibrated Ortho vs. Calibrated vs. PoU-FVR | True-pose NCC `0.9912–0.9969`; PoU-FVR **`0.75–1.32 mm`** in `5.0–5.5 s` (vs. `39.7–41.0 mm` uncalibrated ortho, `5.9–10.2 mm` calibrated ortho) |
 
-Full experiment CSVs: [exp29_gpu_benchmark.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp29_gpu_benchmark.csv), [exp29_pou_ablation.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp29_pou_ablation.csv), [exp30_gpu_multistart_reg.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp30_gpu_multistart_reg.csv), [exp30_gpu_multistart_summary.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp30_gpu_multistart_summary.csv), [exp31_deepfluoro_gpu_cohort.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp31_deepfluoro_gpu_cohort.csv), [exp31_deepfluoro_gpu_summary.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp31_deepfluoro_gpu_summary.csv), [exp32_deepfluoro_matched_b64.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp32_deepfluoro_matched_b64.csv), [exp32_deepfluoro_summary.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp32_deepfluoro_summary.csv), [exp32_precision_ablation.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp32_precision_ablation.csv), [exp32_spine_ct_conebeam.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp32_spine_ct_conebeam.csv), [exp32_spine_ct_summary.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp32_spine_ct_summary.csv), and [outputs/paper_figures/](https://github.com/pareelamre/diff-fvr/blob/master/outputs/paper_figures/README.md).
+Full experiment CSVs: [exp29_gpu_benchmark.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp29_gpu_benchmark.csv), [exp29_pou_ablation.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp29_pou_ablation.csv), [exp30_gpu_multistart_reg.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp30_gpu_multistart_reg.csv), [exp30_gpu_multistart_summary.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp30_gpu_multistart_summary.csv), [exp31_deepfluoro_gpu_cohort.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp31_deepfluoro_gpu_cohort.csv), [exp31_deepfluoro_gpu_summary.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp31_deepfluoro_gpu_summary.csv), [exp32_deepfluoro_matched_b64.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp32_deepfluoro_matched_b64.csv), [exp32_deepfluoro_summary.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp32_deepfluoro_summary.csv), [exp32_precision_ablation.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp32_precision_ablation.csv), [exp32_spine_ct_conebeam.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp32_spine_ct_conebeam.csv), [exp32_spine_ct_summary.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp32_spine_ct_summary.csv), [exp33_deepfluoro_fixes.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp33_deepfluoro_fixes.csv), [exp33_deepfluoro_summary.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp33_deepfluoro_summary.csv), [exp33_spine_ct_fixes.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp33_spine_ct_fixes.csv), [exp33_spine_ct_summary.csv](https://github.com/pareelamre/diff-fvr/blob/master/outputs/exp33_spine_ct_summary.csv), and [outputs/paper_figures/](https://github.com/pareelamre/diff-fvr/blob/master/outputs/paper_figures/README.md).
 
 ---
 
 ## What the Simulation & Unit Scope Covers
 
-The `experiments/` directory contains 32 numbered simulation, real C-arm fluoroscopy, and NVIDIA A100 GPU benchmark studies (plus `9b`).
+The `experiments/` directory contains 33 numbered simulation, real C-arm fluoroscopy, and NVIDIA A100 GPU benchmark studies (plus `9b`).
 
-Experiments 7, 12, and 13 each use one source CT volume and multiple randomized poses with same-renderer Fourier targets and optional synthetic noise; `mTRE` in those early simulation scripts uses eight synthetic volume landmarks rather than anatomical fiducials. Historical CSVs/figures in `outputs/paper_figures/` numbered `<= 23` predate the physical-unit correction; see [result limitations](https://github.com/pareelamre/diff-fvr/blob/master/outputs/paper_figures/README.md). Experiments `25`–`32` evaluate calibrated physical-mm coordinates against independent raycasting (`DiffDRR 0.6.1`, `nanodrr`), clinical spine/abdominal CT cone-beam cohorts (`Kaggle Lumbar Spine`, `AMOS 0001`, `GE DICOM`), and paired real `DeepFluoro` pelvic CT + physical C-arm radiographs with anatomical fiducials.
+Experiments 7, 12, and 13 each use one source CT volume and multiple randomized poses with same-renderer Fourier targets and optional synthetic noise; `mTRE` in those early simulation scripts uses eight synthetic volume landmarks rather than anatomical fiducials. Historical CSVs/figures in `outputs/paper_figures/` numbered `<= 23` predate the physical-unit correction; see [result limitations](https://github.com/pareelamre/diff-fvr/blob/master/outputs/paper_figures/README.md). Experiments `25`–`33` evaluate calibrated physical-mm coordinates against independent raycasting (`DiffDRR 0.6.1`, `nanodrr`), clinical spine/abdominal CT cone-beam cohorts (`Kaggle Lumbar Spine`, `AMOS 0001`, `GE DICOM`), and paired real `DeepFluoro` pelvic CT + physical C-arm radiographs with anatomical fiducials.
 
 ---
 
@@ -213,6 +242,6 @@ The [browser demonstration](https://pareelamre.github.io/diff-fvr/) is a scripte
 | :--- | :--- |
 | `src/fvr/` | Core CPU Fourier engines, perspective `PoU-FVR`, fused Triton kernels, autograd, DICOM loader, and `fvr-render` / `fvr-register` CLI |
 | `tests/` | Unit tests (`test_cone_beam_fvr.py`, `test_physical_units.py`, `test_torch_engine.py`) and end-to-end CT registration tests |
-| `experiments/` | Simulation, real paired `DeepFluoro` / GE DICOM C-arm studies (`exp25`–`exp28`), and NVIDIA A100 GPU benchmarks (`exp29`–`exp32`) |
-| `outputs/` | Benchmark CSVs (`exp29_*.csv`–`exp32_*.csv`) and publication figures (`outputs/paper_figures/`) |
+| `experiments/` | Simulation, real paired `DeepFluoro` / GE DICOM C-arm studies (`exp25`–`exp28`), and NVIDIA A100 GPU benchmarks (`exp29`–`exp33`) |
+| `outputs/` | Benchmark CSVs (`exp29_*.csv`–`exp33_*.csv`) and publication figures (`outputs/paper_figures/`) |
 | `docs/` | Illustrative web demonstration |

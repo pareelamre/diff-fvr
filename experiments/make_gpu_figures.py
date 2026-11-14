@@ -11,6 +11,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -472,11 +473,134 @@ def make_fig31() -> Path:
     return out_path
 
 
+def make_fig32() -> Path:
+    """Publication Fig 32: Exp33 soft-spot fixes (4x4x4 PoU slabs & K=4 <0.5GB Hybrid polish)."""
+    df32 = pd.read_csv(OUT / "exp32_deepfluoro_summary.csv")
+    df33 = pd.read_csv(OUT / "exp33_deepfluoro_summary.csv")
+    ct32 = pd.read_csv(OUT / "exp32_spine_ct_summary.csv")
+    ct33 = pd.read_csv(OUT / "exp33_spine_ct_summary.csv")
+
+    def _row(df, col, val, method):
+        sub = df[(df[col] == val) & (df["method"] == method)]
+        return sub.iloc[0]
+
+    def _ct_row(df, ds, H, method):
+        sub = df[(df["dataset"] == ds) & (df["H"] == H) & (df["method"] == method)]
+        return sub.iloc[0]
+
+    fig, axes = plt.subplots(1, 3, figsize=(16.5, 4.9), dpi=300)
+    plt.subplots_adjust(wspace=0.28, top=0.83, bottom=0.22, left=0.055, right=0.985)
+
+    # Panel (a): DeepFluoro N=24 before/after fixes
+    ax = axes[0]
+    pairs = [
+        ("Standalone\nPoU-FVR", _row(df32, "subset", "All_DeepFluoro", "PoU-FVR Triton (2x4x2@80 bf16, B=64)"), _row(df33, "subset", "All_DeepFluoro", "PoU-FVR Triton (4x4x4@64 bf16, B=64)")),
+        ("Hybrid+nano\n(<0.5 GB)", _row(df32, "subset", "All_DeepFluoro", "Hybrid PoU-Triton + nanodrr polish (<0.5GB)"), _row(df33, "subset", "All_DeepFluoro", "Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB)")),
+        ("Hybrid+\nDiffDRR", _row(df32, "subset", "All_DeepFluoro", "Hybrid PoU-Triton + DiffDRR polish"), _row(df33, "subset", "All_DeepFluoro", "Hybrid PoU-Triton (K=4) + DiffDRR polish")),
+    ]
+    x = np.arange(len(pairs))
+    w = 0.34
+    v32 = [float(p[1]["median_mtre_mm"]) for p in pairs]
+    v33 = [float(p[2]["median_mtre_mm"]) for p in pairs]
+    s32 = [float(p[1]["success_2mm_pct"]) for p in pairs]
+    s33 = [float(p[2]["success_2mm_pct"]) for p in pairs]
+    ax.bar(x - w / 2, v32, width=w, color="#9ca3af", edgecolor="#374151", linewidth=0.8, label="exp32 (2x4x2@80 / K=1)")
+    ax.bar(x + w / 2, v33, width=w, color="#0f766e", edgecolor="#134e4a", linewidth=0.8, label="exp33 (4x4x4@64 / K=4)")
+    for i in range(len(pairs)):
+        ax.text(x[i] - w / 2, v32[i] + 0.06, f"{v32[i]:.2f}\n({s32[i]:.0f}%)", ha="center", va="bottom", fontsize=7.5, color="#374151")
+        ax.text(x[i] + w / 2, v33[i] + 0.06, f"{v33[i]:.2f}\n({s33[i]:.0f}%)", ha="center", va="bottom", fontsize=7.5, fontweight="bold", color="#0f766e")
+    ax.axhline(2.0, color="#b91c1c", linestyle="--", linewidth=1.0, alpha=0.7)
+    ax.set_xticks(x)
+    ax.set_xticklabels([p[0] for p in pairs], fontsize=8.5)
+    ax.set_ylabel("Median 6-DoF mTRE (mm) & <2 mm Rate", fontsize=9)
+    ax.set_ylim(0, 3.15)
+    ax.set_title("(a) DeepFluoro (N=24): Soft-Spot Fixes", fontsize=10, fontweight="bold")
+    ax.grid(axis="y", alpha=0.25)
+    ax.legend(fontsize=7.5, loc="upper right", framealpha=0.92)
+
+    # Panel (b): Standalone PoU-FVR (2x4x2@80 vs 4x4x4@64) across Clinical CTs
+    ax = axes[1]
+    cohorts = [
+        ("Kaggle\n256²", "Kaggle_Lumbar_Spine_CT", 256),
+        ("Kaggle\n512²", "Kaggle_Lumbar_Spine_CT", 512),
+        ("AMOS\n256²", "AMOS_Thoracolumbar_CT", 256),
+        ("GE CT\n256²", "GE_Clinical_CT", 256),
+    ]
+    xc = np.arange(len(cohorts))
+    c32 = [_ct_row(ct32, ds, H, "PoU-FVR Triton (2x4x2@80 bf16, B=64)") for _, ds, H in cohorts]
+    c33 = [_ct_row(ct33, ds, H, "PoU-FVR Triton (4x4x4@64 bf16, B=64)") for _, ds, H in cohorts]
+    m32 = [float(r["median_mtre_mm"]) for r in c32]
+    m33 = [float(r["median_mtre_mm"]) for r in c33]
+    p32 = [float(r["success_2mm_pct"]) for r in c32]
+    p33 = [float(r["success_2mm_pct"]) for r in c33]
+    ax.bar(xc - w / 2, m32, width=w, color="#f59e0b", edgecolor="#92400e", linewidth=0.8, label="Standalone PoU 2x4x2@80")
+    ax.bar(xc + w / 2, m33, width=w, color="#2563eb", edgecolor="#1e3a8a", linewidth=0.8, label="Standalone PoU 4x4x4@64")
+    for i in range(len(cohorts)):
+        ax.text(xc[i] - w / 2, m32[i] + 0.18, f"{m32[i]:.2f}\n({p32[i]:.0f}%)", ha="center", va="bottom", fontsize=7.2, color="#92400e")
+        ax.text(xc[i] + w / 2, m33[i] + 0.18, f"{m33[i]:.2f}\n({p33[i]:.0f}%)", ha="center", va="bottom", fontsize=7.2, fontweight="bold", color="#1e3a8a")
+    ax.axhline(2.0, color="#b91c1c", linestyle="--", linewidth=1.0, alpha=0.7)
+    ax.set_xticks(xc)
+    ax.set_xticklabels([c[0] for c in cohorts], fontsize=8.5)
+    ax.set_ylabel("Median mTRE (mm) & <2 mm Rate", fontsize=9)
+    ax.set_ylim(0, 11.6)
+    ax.set_title("(b) Standalone PoU-FVR: Isotropic 4x4x4 Slabs", fontsize=10, fontweight="bold")
+    ax.grid(axis="y", alpha=0.25)
+    ax.legend(fontsize=7.5, loc="upper left", framealpha=0.92)
+
+    # Panel (c): <0.5 GB Hybrid+nanodrr (K=1 vs K=4 f32 polish) across all cohorts
+    ax = axes[2]
+    all_c = [
+        ("DeepFluoro\n(N=24, 464MB)", float(_row(df32, "subset", "All_DeepFluoro", "Hybrid PoU-Triton + nanodrr polish (<0.5GB)")["median_mtre_mm"]),
+         float(_row(df33, "subset", "All_DeepFluoro", "Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB)")["median_mtre_mm"]),
+         float(_row(df33, "subset", "All_DeepFluoro", "Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB)")["success_2mm_pct"])),
+        ("Kaggle 256²\n(464MB)", float(_ct_row(ct32, "Kaggle_Lumbar_Spine_CT", 256, "Hybrid PoU-Triton + nanodrr polish (<0.5GB)")["median_mtre_mm"]),
+         float(_ct_row(ct33, "Kaggle_Lumbar_Spine_CT", 256, "Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB)")["median_mtre_mm"]),
+         float(_ct_row(ct33, "Kaggle_Lumbar_Spine_CT", 256, "Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB)")["success_2mm_pct"])),
+        ("Kaggle 512²\n(908MB)", float(_ct_row(ct32, "Kaggle_Lumbar_Spine_CT", 512, "Hybrid PoU-Triton + nanodrr polish (<0.5GB)")["median_mtre_mm"]),
+         float(_ct_row(ct33, "Kaggle_Lumbar_Spine_CT", 512, "Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB)")["median_mtre_mm"]),
+         float(_ct_row(ct33, "Kaggle_Lumbar_Spine_CT", 512, "Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB)")["success_2mm_pct"])),
+        ("AMOS 256²\n(465MB)", float(_ct_row(ct32, "AMOS_Thoracolumbar_CT", 256, "Hybrid PoU-Triton + nanodrr polish (<0.5GB)")["median_mtre_mm"]),
+         float(_ct_row(ct33, "AMOS_Thoracolumbar_CT", 256, "Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB)")["median_mtre_mm"]),
+         float(_ct_row(ct33, "AMOS_Thoracolumbar_CT", 256, "Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB)")["success_2mm_pct"])),
+        ("GE CT 256²\n(464MB)", float(_ct_row(ct32, "GE_Clinical_CT", 256, "Hybrid PoU-Triton + nanodrr polish (<0.5GB)")["median_mtre_mm"]),
+         float(_ct_row(ct33, "GE_Clinical_CT", 256, "Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB)")["median_mtre_mm"]),
+         float(_ct_row(ct33, "GE_Clinical_CT", 256, "Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB)")["success_2mm_pct"])),
+    ]
+    xh = np.arange(len(all_c))
+    h32 = [c[1] for c in all_c]
+    h33 = [c[2] for c in all_c]
+    s_h = [c[3] for c in all_c]
+    ax.bar(xh - w / 2, h32, width=w, color="#9ca3af", edgecolor="#374151", linewidth=0.8, label="Hybrid+nano K=1 (exp32)")
+    ax.bar(xh + w / 2, h33, width=w, color="#7c3aed", edgecolor="#4c1d95", linewidth=0.8, label="Hybrid+nano K=4 f32 (exp33)")
+    for i in range(len(all_c)):
+        ax.text(xh[i] - w / 2, h32[i] + 0.08, f"{h32[i]:.2f}", ha="center", va="bottom", fontsize=7.2, color="#374151")
+        ax.text(xh[i] + w / 2, h33[i] + 0.08, f"{h33[i]:.2f}\n({s_h[i]:.0f}%)", ha="center", va="bottom", fontsize=7.0, fontweight="bold", color="#4c1d95")
+    ax.axhline(2.0, color="#b91c1c", linestyle="--", linewidth=1.0, alpha=0.7)
+    ax.set_xticks(xh)
+    ax.set_xticklabels([c[0] for c in all_c], fontsize=7.6)
+    ax.set_ylabel("Median mTRE (mm) & <2 mm Rate", fontsize=9)
+    ax.set_ylim(0, 6.0)
+    ax.set_title("(c) Low-VRAM Hybrid+nanodrr: K=4 f32 Polish", fontsize=10, fontweight="bold")
+    ax.grid(axis="y", alpha=0.25)
+    ax.legend(fontsize=7.5, loc="upper right", framealpha=0.92)
+
+    for a in axes:
+        _style_ax(a)
+    FIG_OUT.mkdir(parents=True, exist_ok=True)
+    TEX_FIG.mkdir(parents=True, exist_ok=True)
+    out_path = FIG_OUT / "fig32_softspot_fixes.png"
+    fig.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    shutil.copy2(out_path, TEX_FIG / out_path.name)
+    return out_path
+
+
 def main() -> None:
     p29 = make_fig29()
     p30 = make_fig30()
     p31 = make_fig31()
-    print(f"Generated {p29}, {p30}, and {p31} (and copied to {TEX_FIG})")
+    p32 = make_fig32()
+    print(f"Generated {p29}, {p30}, {p31}, and {p32} (and copied to {TEX_FIG})")
 
 
 if __name__ == "__main__":

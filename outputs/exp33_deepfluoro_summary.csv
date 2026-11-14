@@ -1,0 +1,13 @@
+device,subset,method,n_cases,mean_mtre_mm,median_mtre_mm,iqr_q25_mm,iqr_q75_mm,success_2mm_pct,success_5mm_pct,mean_prep_s,mean_reg_s,mean_total_s,mean_vram_mb
+NVIDIA A100-SXM4-40GB,All_DeepFluoro,"PoU-FVR Triton (4x4x4@64 bf16, B=64)",24,1.436,1.423,1.02,1.868,91.7,100.0,1.95,4.475,6.425,3367.5
+NVIDIA A100-SXM4-40GB,All_DeepFluoro,Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB),24,0.964,0.835,0.756,0.997,100.0,100.0,0.445,1.368,1.813,464.1
+NVIDIA A100-SXM4-40GB,All_DeepFluoro,Hybrid PoU-Triton (K=4) + DiffDRR polish,24,0.916,0.857,0.825,0.948,100.0,100.0,0.445,6.607,7.051,21948.2
+NVIDIA A100-SXM4-40GB,Tier1_Bounded,"PoU-FVR Triton (4x4x4@64 bf16, B=64)",12,1.449,1.419,1.01,1.874,83.3,100.0,1.95,4.46,6.411,3367.5
+NVIDIA A100-SXM4-40GB,Tier1_Bounded,Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB),12,0.955,0.862,0.749,0.957,100.0,100.0,0.445,1.572,2.016,464.1
+NVIDIA A100-SXM4-40GB,Tier1_Bounded,Hybrid PoU-Triton (K=4) + DiffDRR polish,12,0.905,0.867,0.811,0.948,100.0,100.0,0.445,6.611,7.055,21948.2
+NVIDIA A100-SXM4-40GB,Tier2_WideBasin,"PoU-FVR Triton (4x4x4@64 bf16, B=64)",12,1.424,1.43,1.036,1.867,100.0,100.0,1.95,4.489,6.439,3367.5
+NVIDIA A100-SXM4-40GB,Tier2_WideBasin,Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB),12,0.974,0.828,0.756,1.056,100.0,100.0,0.445,1.165,1.609,464.1
+NVIDIA A100-SXM4-40GB,Tier2_WideBasin,Hybrid PoU-Triton (K=4) + DiffDRR polish,12,0.926,0.853,0.836,0.959,100.0,100.0,0.445,6.602,7.047,21948.2
+NVIDIA A100-SXM4-40GB,WideAngle_gt15deg,"PoU-FVR Triton (4x4x4@64 bf16, B=64)",20,1.323,1.044,1.01,1.863,100.0,100.0,1.922,4.487,6.409,3376.2
+NVIDIA A100-SXM4-40GB,WideAngle_gt15deg,Hybrid PoU-Triton (K=4) + nanodrr f32 polish (<0.5GB),20,0.951,0.807,0.72,0.895,100.0,100.0,0.425,1.342,1.767,464.1
+NVIDIA A100-SXM4-40GB,WideAngle_gt15deg,Hybrid PoU-Triton (K=4) + DiffDRR polish,20,0.921,0.867,0.79,0.948,100.0,100.0,0.425,6.581,7.006,21799.0
