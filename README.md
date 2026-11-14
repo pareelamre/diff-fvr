@@ -54,6 +54,38 @@ and 3D anatomical fiducials (`128×128` interior crop, CPU):
   `NCC(Diff-FVR, DiffDRR) = 0.9550`, `2.24 s` mean Diff-FVR registration
   (`6.04 mm`), and `3.41 mm` Hybrid (`123.27 s`) vs. `3.73 mm` DiffDRR (`157.97 s`).
 
+## NVIDIA A100 GPU Benchmark & Cone-Beam PoU-FVR Pareto Ablation (`exp29`)
+
+`experiments/exp29_gpu_triton_and_ablation.py` (verified on **NVIDIA A100-SXM4-40GB**,
+commit `d0b8384`, `Triton=True`, zero OOM entries) benchmarks full `H×H` batched
+rendering across `H ∈ {128, 200, 256, 512}` and `B ∈ {1, 16, 64}` against DiffDRR
+and `nanodrr` (`n=500` PyTorch and Triton/`torch.compile` kernels), with sequential
+micro-batching (`[mb=16]`) automatically engaged only where `nanodrr torch` at
+`512×512, B=64` would otherwise exceed 40 GB VRAM (`93.75 GiB` unchunked):
+
+- **Cone-Beam Perspective (`PoU-FVR compile`, `2×2×2` bf16, `0.473 s` 3D FFT prep):**
+  - `256×256, B=1`: **`1.43 ms`** (`699 FPS`, `9.51 MB`) — **`11.5x`** faster than
+    `DiffDRR f32` (`16.41 ms`, `2,581.5 MB`) and **`1.97x`** faster than `nanodrr torch` (`2.81 ms`).
+  - `256×256, B=64`: **`4.37 ms`** (`14,645 FPS`, `608 MB`) — **`26.4x`** faster than
+    `nanodrr torch` (`115.40 ms`, `32,144 MB`) and **`3.26x`** faster than
+    `nanodrr triton+compile (n=500)` (`14.25 ms`).
+  - `512×512, B=16`: **`2.99 ms`** (`5,344 FPS`, `584 MB`) — **`37.5x`** faster than
+    `nanodrr torch` (`112.27 ms`, `32,145 MB`) and **`4.77x`** faster than
+    `nanodrr triton+compile (n=500)` (`14.29 ms`).
+  - `512×512, B=64`: **`9.27 ms`** (`6,903 FPS`, `2,336 MB`) — **`48.1x`** faster than
+    `nanodrr torch [mb=16]` (`445.90 ms`, `32,193 MB`) and **`5.98x`** faster than
+    `nanodrr triton+compile (n=500)` (`55.41 ms`).
+- **Parallel-Beam Dual-Domain Loss (`TorchDiffFVR Zero-IFFT NCC`, zero-IFFT in loop):**
+  Sustains `0.65–1.29 ms` up to `256×256, B=64` (`49,573 FPS`, `96 MB`) and
+  `3.45 ms` at `512×512, B=64` (`18,529 FPS`, `384 MB`).
+- **PoU-FVR Block / Resolution Pareto Ablation (`H=256×256, sdd=1020 mm`, `B=1`):**
+  Across `1×1×1` (`6.13–6.34 MB`, `1.87–1.89 ms`, `NCC=0.921–0.934`), `2×2×2` (`21.44–24.44 MB`,
+  `1.88–1.98 ms`, `NCC=0.926–0.942`), and `2×4×2` (`39.13–45.13 MB`, `1.90–1.92 ms`,
+  `NCC=0.932–0.951`), forward latency stays virtually constant (`1.87–1.98 ms`) vs.
+  synthetic ray-marching ground truth; full CSVs are saved in
+  [outputs/exp29_gpu_benchmark.csv](outputs/exp29_gpu_benchmark.csv) and
+  [outputs/exp29_pou_ablation.csv](outputs/exp29_pou_ablation.csv).
+
 ## Projection geometry and physical units
 
 - `RobustDiffFVREngine` accepts a **cubic, isotropic** volume and spacing
@@ -116,4 +148,6 @@ It does not execute the Python registration engine or measure clinical accuracy.
 `src/fvr/` contains renderers, registration, metrics, DICOM loading and CLI code;
 `tests/` contains synthetic regressions and integration scripts; `experiments/`
 contains simulation studies; `docs/` contains the illustrative browser demo;
+`outputs/exp29_gpu_benchmark.csv` and `outputs/exp29_pou_ablation.csv` store
+the verified NVIDIA A100 GPU benchmark and PoU-FVR Pareto tables;
 `outputs/paper_figures/` contains historical generated results.
