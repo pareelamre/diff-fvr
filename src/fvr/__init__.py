@@ -5,6 +5,7 @@ Author: Pareel Amre, TU Dresden
 
 from .fvr_engine import FourierVolumeRenderer
 from .diff_fvr import DifferentiableFourierVolumeRenderer
+from .cone_beam_fvr import PerspectiveSlabFVR
 from .core_engine import RobustDiffFVREngine, detect_radio_opaque_metal
 from .gradients import SpectralGradientEngine
 from .articulated_spine import ArticulatedSpineModel, VertebralSegment
@@ -26,6 +27,7 @@ __version__ = "1.0.0"
 __all__ = [
     "FourierVolumeRenderer",
     "DifferentiableFourierVolumeRenderer",
+    "PerspectiveSlabFVR",
     "RobustDiffFVREngine",
     "detect_radio_opaque_metal",
     "SpectralGradientEngine",

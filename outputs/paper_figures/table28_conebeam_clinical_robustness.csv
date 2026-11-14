@@ -1,0 +1,11 @@
+cohort,separation_or_mag,true_pose_ncc,uncal_ortho_or_drr_mtre_mm,cal_ortho_or_drr_time_s,cal_ortho_mtre_mm,pou_conefvr_mtre_mm,pou_conefvr_time_s,hybrid_mtre_mm,hybrid_time_s
+GE C-Arm Compact Mobile C-Arm (600/900mm),1.50x,0.9912,40.114,8.87,10.205,1.324,5.45,,
+GE C-Arm Mini Surgical C-Arm (750/1050mm),1.40x,0.9952,39.67,7.92,7.422,0.995,4.99,,
+GE C-Arm Standard Fluoroscopy (850/1200mm),1.41x,0.996,39.981,10.35,5.927,0.788,5.51,,
+GE C-Arm Fixed Interventional (1000/1400mm),1.40x,0.9969,41.002,8.08,6.434,0.747,5.18,,
+DeepFluoro subject01 (003+009),44.7 deg,0.9917,3.464,127.47,1.904,2.621,8.13,1.126,51.01
+DeepFluoro subject02 (002+003),2.8 deg,0.9907,7.343,116.97,6.479,3.201,8.42,2.048,45.98
+DeepFluoro subject03 (003+005),1.7 deg,0.9571,4.985,130.91,3.586,3.146,10.56,2.385,53.05
+DeepFluoro subject04 (004+005),17.7 deg,0.998,6.208,146.39,2.752,1.343,9.78,2.919,55.46
+DeepFluoro subject05 (004+005),35.3 deg,0.9955,2.109,136.9,1.206,1.345,9.23,1.409,52.65
+DeepFluoro subject06 (000+004),26.8 deg,0.9965,4.563,106.74,5.022,4.308,9.38,3.47,43.71

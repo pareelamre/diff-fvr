@@ -1,0 +1,13 @@
+detector_res,geometry,method,fft_prep_s,fwd_ms,fwd_bwd_ms,total_10steps_2view_s,total_40steps_2view_s,total_100steps_2view_s
+128,Parallel (SDD=1e6 mm),Parallel Diff-FVR (1x1x1),0.323,27.31,57.62,1.48,4.93,11.85
+128,Parallel (SDD=1e6 mm),DiffDRR Siddon (SDD=1e6),0.0,1042.68,1918.18,38.36,153.45,383.64
+128,Parallel (SDD=1e6 mm),DiffDRR Trilinear (SDD=1e6),0.0,466.49,1182.29,23.65,94.58,236.46
+128,Cone-Beam (SDD=1020 mm),Cone-Beam PoU-FVR (2x2x2),0.798,18.61,40.25,1.6,4.02,8.85
+128,Cone-Beam (SDD=1020 mm),DiffDRR Siddon (Cone),0.0,1113.37,1954.21,39.08,156.34,390.84
+128,Cone-Beam (SDD=1020 mm),DiffDRR Trilinear (Cone),0.0,625.78,1582.02,31.64,126.56,316.4
+256,Parallel (SDD=1e6 mm),Parallel Diff-FVR (1x1x1),0.323,28.16,59.9,1.52,5.12,12.3
+256,Parallel (SDD=1e6 mm),DiffDRR Siddon (SDD=1e6),0.0,3609.73,7225.14,144.5,578.01,1445.03
+256,Parallel (SDD=1e6 mm),DiffDRR Trilinear (SDD=1e6),0.0,1762.42,4513.23,90.26,361.06,902.65
+256,Cone-Beam (SDD=1020 mm),Cone-Beam PoU-FVR (2x2x2),0.798,32.47,90.32,2.6,8.02,18.86
+256,Cone-Beam (SDD=1020 mm),DiffDRR Siddon (Cone),0.0,4067.84,7752.56,155.05,620.21,1550.51
+256,Cone-Beam (SDD=1020 mm),DiffDRR Trilinear (Cone),0.0,2045.89,5020.07,100.4,401.61,1004.01
