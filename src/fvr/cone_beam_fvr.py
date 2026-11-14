@@ -321,6 +321,7 @@ class PerspectiveSlabFVR(nn.Module):
         block_res: int = 80,
         pad_mult: int = 2,
         overlap: float = 0.25,
+        **kwargs,
     ) -> "PerspectiveSlabFVR":
         """Construct cone-beam PoU-FVR matching DiffDRR Subject world RAS coordinates."""
         vol_raw = subject.density.data.squeeze(0).float()
@@ -345,6 +346,7 @@ class PerspectiveSlabFVR(nn.Module):
             pad_mult=pad_mult,
             overlap=overlap,
             energy_thresh=1e-3,
+            **kwargs,
         )
 
     def _project_core(

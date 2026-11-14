@@ -161,7 +161,7 @@ def run_benchmark() -> None:
 
     vol_path = load_deepfluoro_subject01()
     d_subj_cpu = read(vol_path, orientation="AP")
-    d_subj = d_subj_cpu.to(device)
+    d_subj = d_subj_cpu
     n_subj_f32 = NanoSubject.from_filepath(vol_path).to(dtype=torch.float32, device=device)
     n_subj_bf16 = NanoSubject.from_filepath(vol_path).to(dtype=torch.bfloat16, device=device) if device.type == "cuda" else n_subj_f32
 
@@ -181,7 +181,7 @@ def run_benchmark() -> None:
         d_subj_cpu, grid_blocks=(2, 2, 2), block_res=64, pad_mult=2, use_triton=False
     ).to(device)
     if device.type == "cuda":
-        fvr_pou_comp.to_precision(torch.bfloat16).compile_renderer(mode="reduce-overhead")
+        fvr_pou_comp.to_precision(torch.bfloat16).compile_renderer(mode="default")
 
     vol_128 = torch.nn.functional.interpolate(
         d_subj_cpu.density.data.unsqueeze(0), size=(128, 128, 128), mode="trilinear", align_corners=False
@@ -191,7 +191,7 @@ def run_benchmark() -> None:
         fvr_torch.to_precision(torch.bfloat16)
     fvr_torch_comp = TorchDiffFVREngine(vol_128, pad_factor=2, device=device, use_triton=False)
     if device.type == "cuda":
-        fvr_torch_comp.to_precision(torch.bfloat16).compile_renderer(mode="reduce-overhead")
+        fvr_torch_comp.to_precision(torch.bfloat16).compile_renderer(mode="default")
 
     out_dir = ROOT / "outputs"
     out_dir.mkdir(exist_ok=True)
@@ -211,14 +211,15 @@ def run_benchmark() -> None:
             rot = torch.tensor([[5.0, -3.0, 4.0]], device=device).expand(B, 3) + torch.randn(B, 3, device=device) * 2.0
             xyz = torch.tensor([[0.0, 850.0, 0.0]], device=device).expand(B, 3)
             rt_inv = make_rt_inv(rot, xyz, orientation="AP", isocenter=n_subj_f32.isocenter)
+            rt_inv_fvr = make_rt_inv(rot, xyz, orientation="AP", isocenter=torch.zeros(3, device=device))
             nano_cone = NanoDRR(k_inv=k_inv, sdd=torch.tensor([1020.0], device=device), height=H, width=H)
             nano_comp = torch.compile(nano_cone, mode="reduce-overhead") if device.type == "cuda" else nano_cone
 
             if B == 1:
                 with torch.no_grad():
                     ref_nano = nano_cone(n_subj_f32, rt_inv, n_samples=500, backend="torch" if device.type != "cuda" else "auto")
-                    ref_pou = fvr_pou_f32.forward_pinhole(rt_inv, lat)
-                    ref_tri = fvr_pou_tri.forward_pinhole(rt_inv, lat)
+                    ref_pou = fvr_pou_f32.forward_pinhole(rt_inv_fvr, lat)
+                    ref_tri = fvr_pou_tri.forward_pinhole(rt_inv_fvr, lat)
                 print(
                     f"\n[H={H}x{H}] PoU vs nanodrr(n=500) NCC: fp32={_ncc(ref_pou, ref_nano):.4f}, "
                     f"triton+bf16={_ncc(ref_tri, ref_nano):.4f}"
@@ -241,16 +242,16 @@ def run_benchmark() -> None:
                 specs.append(("nanodrr triton+compile (bf16 n=500 fwd)", lambda m=nano_comp, s=n_subj_bf16, p=rt_inv: m(s, p, n_samples=500), False))
                 specs.append(("nanodrr triton+compile (bf16 n=200 fwd)", lambda m=nano_comp, s=n_subj_bf16, p=rt_inv: m(s, p, n_samples=200), False))
 
-            specs.append(("PoU-FVR Pinhole (2x2x2 f32 fwd)", lambda m=fvr_pou_f32, p=rt_inv, l=lat: m.forward_pinhole(p, l), False))
+            specs.append(("PoU-FVR Pinhole (2x2x2 f32 fwd)", lambda m=fvr_pou_f32, p=rt_inv_fvr, l=lat: m.forward_pinhole(p, l), False))
             if device.type == "cuda" and HAS_TRITON:
-                specs.append(("PoU-FVR Triton (2x2x2 bf16 fwd)", lambda m=fvr_pou_tri, p=rt_inv, l=lat: m.forward_pinhole(p, l), False))
+                specs.append(("PoU-FVR Triton (2x2x2 bf16 fwd)", lambda m=fvr_pou_tri, p=rt_inv_fvr, l=lat: m.forward_pinhole(p, l), False))
                 try:
-                    cg_fn = _capture_cuda_graph_fn(lambda p, m=fvr_pou_tri, l=lat: m.forward_pinhole(p, l), rt_inv)
+                    cg_fn = _capture_cuda_graph_fn(lambda p, m=fvr_pou_tri, l=lat: m.forward_pinhole(p, l), rt_inv_fvr)
                     specs.append(("PoU-FVR Triton+CUDAGraph (bf16 fwd)", cg_fn, False))
                 except Exception as exc:
                     print(f"  [Warn] CUDAGraph capture skipped for H={H}, B={B}: {exc}")
             if device.type == "cuda":
-                specs.append(("PoU-FVR compile (2x2x2 bf16 fwd)", lambda m=fvr_pou_comp, p=rt_inv, l=lat: m.forward_pinhole(p, l), False))
+                specs.append(("PoU-FVR compile (2x2x2 bf16 fwd)", lambda m=fvr_pou_comp, p=rt_inv_fvr, l=lat: m.forward_pinhole(p, l), False))
 
             poses_b = torch.randn(B, 6, device=device)
             f_targ = fvr_torch.prepare_spectral_target(torch.randn(1, 1, H, H, device=device))
@@ -261,7 +262,7 @@ def run_benchmark() -> None:
                     rp = p.detach().clone().requires_grad_(True)
                     m(s, rp, n_samples=500).sum().backward()
 
-                def _pou_fb(m=fvr_pou_tri if device.type == "cuda" else fvr_pou_f32, p=rt_inv, l=lat):
+                def _pou_fb(m=fvr_pou_tri if device.type == "cuda" else fvr_pou_f32, p=rt_inv_fvr, l=lat):
                     rp = p.detach().clone().requires_grad_(True)
                     m.forward_pinhole(rp, l).sum().backward()
 
@@ -272,35 +273,51 @@ def run_benchmark() -> None:
             print(f"--- H={H}x{H}, Batch B={B} ---")
             for name, fn, is_fb in specs:
                 run_fn = fn if is_fb else (lambda f=fn: _eval_nograd(f))
-                wall_ms, gpu_ms, peak_mb = _cuda_time_ms(run_fn, warmup=warmup, runs=runs)
-                fps = (B * 1000.0) / wall_ms if wall_ms > 0 else 0.0
-                print(
-                    f"  {name:<42} wall={wall_ms:8.3f} ms | gpu={gpu_ms:8.3f} ms | "
-                    f"{fps:10.1f} FPS | work_mem={peak_mb:6.1f} MB"
-                )
-                rows.append({
-                    "device": gpu_label,
-                    "H": H,
-                    "B": B,
-                    "method": name,
-                    "wall_ms": round(wall_ms, 4),
-                    "gpu_ms": round(gpu_ms, 4),
-                    "fps": round(fps, 2),
-                    "working_mem_mb": round(peak_mb, 2),
-                    "prep_s": round(t_prep_pou, 3) if "PoU-FVR" in name else 0.0,
-                })
+                try:
+                    wall_ms, gpu_ms, peak_mb = _cuda_time_ms(run_fn, warmup=warmup, runs=runs)
+                    fps = (B * 1000.0) / wall_ms if wall_ms > 0 else 0.0
+                    print(
+                        f"  {name:<42} wall={wall_ms:8.3f} ms | gpu={gpu_ms:8.3f} ms | "
+                        f"{fps:10.1f} FPS | work_mem={peak_mb:6.1f} MB"
+                    )
+                    rows.append({
+                        "device": gpu_label,
+                        "H": H,
+                        "B": B,
+                        "method": name,
+                        "wall_ms": round(wall_ms, 4),
+                        "gpu_ms": round(gpu_ms, 4),
+                        "fps": round(fps, 2),
+                        "working_mem_mb": round(peak_mb, 2),
+                        "prep_s": round(t_prep_pou, 3) if "PoU-FVR" in name else 0.0,
+                    })
+                except torch.OutOfMemoryError as exc:
+                    if device.type == "cuda":
+                        torch.cuda.empty_cache()
+                    print(f"  {name:<42} OOM ({exc})")
+                    rows.append({
+                        "device": gpu_label,
+                        "H": H,
+                        "B": B,
+                        "method": name,
+                        "wall_ms": "OOM",
+                        "gpu_ms": "OOM",
+                        "fps": 0.0,
+                        "working_mem_mb": "OOM",
+                        "prep_s": round(t_prep_pou, 3) if "PoU-FVR" in name else 0.0,
+                    })
+                if device.type == "cuda":
+                    torch.cuda.empty_cache()
 
     print("\n=== PoU-FVR Block / Resolution Pareto Ablation (H=256x256, sdd=1020mm) ===")
     H = 256
     delx = 2.0 * (128.0 / H)
     k_inv = make_k_inv(sdd=1020.0, delx=delx, dely=delx, x0=0.0, y0=0.0, height=H, width=H).to(device)
     lat = PerspectiveSlabFVR.make_pinhole_lattice(k_inv, sdd_mm=1020.0, height=H, width=H)
-    rt_inv = make_rt_inv(
-        torch.tensor([[5.0, -3.0, 4.0]], device=device),
-        torch.tensor([[0.0, 850.0, 0.0]], device=device),
-        orientation="AP",
-        isocenter=n_subj_f32.isocenter,
-    )
+    rot_abl = torch.tensor([[5.0, -3.0, 4.0]], device=device)
+    xyz_abl = torch.tensor([[0.0, 850.0, 0.0]], device=device)
+    rt_inv = make_rt_inv(rot_abl, xyz_abl, orientation="AP", isocenter=n_subj_f32.isocenter)
+    rt_inv_fvr = make_rt_inv(rot_abl, xyz_abl, orientation="AP", isocenter=torch.zeros(3, device=device))
     nano_ref = NanoDRR(k_inv=k_inv, sdd=torch.tensor([1020.0], device=device), height=H, width=H)
     with torch.no_grad():
         trg_ref = nano_ref(n_subj_f32, rt_inv, n_samples=500, backend="torch" if device.type != "cuda" else "auto")
@@ -318,10 +335,10 @@ def run_benchmark() -> None:
             if device.type == "cuda":
                 m.to_precision(torch.bfloat16)
             with torch.no_grad():
-                pred = m.forward_pinhole(rt_inv, lat)
+                pred = m.forward_pinhole(rt_inv_fvr, lat)
             ncc_val = _ncc(pred, trg_ref)
             w_ms, g_ms, p_mb = _cuda_time_ms(
-                lambda mod=m: _eval_nograd(lambda: mod.forward_pinhole(rt_inv, lat)), warmup=warmup, runs=runs
+                lambda mod=m: _eval_nograd(lambda: mod.forward_pinhole(rt_inv_fvr, lat)), warmup=warmup, runs=runs
             )
             print(
                 f"  blocks={gb}, block_res={bres:2d}, active_B={m.B:2d}: prep={t_p:.2f}s | "
