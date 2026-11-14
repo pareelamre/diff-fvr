@@ -377,21 +377,23 @@ def run_multistart_benchmark(smoke: bool = False) -> None:
             if device.type == "cuda":
                 torch.cuda.empty_cache()
 
-        # Warm up torch.compile / Triton before trial 0 measurement so compile cost doesn't distort per-case latency
+        # Warm up torch.compile / Triton at full B_cand so Trial 1 avoids div16/shape recompilation
         if trial == 0:
+            fvr_hi.warmup_pinhole(lat, batch_size=B_cand, backward=True)
+            fvr_fast.warmup_pinhole(lat, batch_size=B_cand, backward=True)
             _run_adam_multistart(
-                lambda dT: _fvr_pair(fvr_hi, rtA_f0, rtB_f0, dT), theta_seeds[:2], xrayA, xrayB, steps=2
+                lambda dT: _fvr_pair(fvr_hi, rtA_f0, rtB_f0, dT), theta_seeds, xrayA, xrayB, steps=1
             )
             _run_adam_multistart(
-                lambda dT: _fvr_pair(fvr_fast, rtA_f0, rtB_f0, dT), theta_seeds[:2], xrayA, xrayB, steps=2
+                lambda dT: _fvr_pair(fvr_fast, rtA_f0, rtB_f0, dT), theta_seeds, xrayA, xrayB, steps=1
             )
             if has_nanodrr and device.type == "cuda":
                 _run_adam_multistart(
                     lambda dT: _nano_pair(nano_comp, n_subj_bf16, dT, n_samples=500),
-                    theta_seeds[:2],
+                    theta_seeds,
                     xrayA,
                     xrayB,
-                    steps=2,
+                    steps=1,
                 )
 
         _record(

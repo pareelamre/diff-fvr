@@ -674,6 +674,25 @@ class PerspectiveSlabFVR(nn.Module):
         """
         return self._forward_from_lattice(rt_inv, lattice)
 
+    def warmup_pinhole(
+        self,
+        lattice: Tuple[torch.Tensor, ...],
+        batch_size: int = 1,
+        backward: bool = True,
+    ) -> None:
+        """Pre-warm Triton/cuFFT kernels for the target ``batch_size`` to prevent first-trial JIT stalls."""
+        dev = self.centers.device
+        eye = torch.eye(4, device=dev, dtype=torch.float32).unsqueeze(0).repeat(max(1, int(batch_size)), 1, 1)
+        if backward:
+            eye = eye.requires_grad_(True)
+            out = self.forward_pinhole(eye, lattice)
+            out.sum().backward()
+        else:
+            with torch.no_grad():
+                _ = self.forward_pinhole(eye, lattice)
+        if dev.type == "cuda":
+            torch.cuda.synchronize(dev)
+
     def forward_carm_view(
         self,
         yaw_deg: torch.Tensor,

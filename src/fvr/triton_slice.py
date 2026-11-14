@@ -54,7 +54,7 @@ if HAS_TRITON:  # pragma: no cover - requires CUDA + Triton runtime
         cx,
         cy,
         cz,
-        B_vol: tl.constexpr,
+        B_vol,
         N_pose,
         K,
         D,
@@ -155,7 +155,7 @@ if HAS_TRITON:  # pragma: no cover - requires CUDA + Triton runtime
         cx,
         cy,
         cz,
-        B_vol: tl.constexpr,
+        B_vol,
         N_pose,
         K,
         D,
@@ -215,7 +215,8 @@ if HAS_TRITON:  # pragma: no cover - requires CUDA + Triton runtime
         omy = 1.0 - ty
         omz = 1.0 - tz
 
-        for b_vol in tl.static_range(B_vol):
+        # Runtime loop over active blocks avoids 16x-32x LLVM IR unroll bloat and shares one JIT artifact across block grids.
+        for b_vol in range(B_vol):
             go_re_base = (b_vol * N_pose + n_pose) * (2 * K)
             go_im_base = go_re_base + K
             gr = tl.load(go_ptr + go_re_base + q_offs, mask=mq, other=0.0).to(tl.float32)
@@ -356,7 +357,7 @@ if HAS_TRITON:  # pragma: no cover - requires CUDA + Triton runtime
         out_ptr,  # *mut float32 [N_pose, K_hw]
         inv_ds,
         c_idx,
-        B_blk: tl.constexpr,
+        B_blk,
         N_pose,
         P,
         K_hw,
@@ -375,7 +376,7 @@ if HAS_TRITON:  # pragma: no cover - requires CUDA + Triton runtime
         pp = P * P
         stride_b = N_pose * pp
 
-        for b in tl.static_range(B_blk):
+        for b in range(B_blk):
             bn_off = b * N_pose + n_pose
             db = tl.load(d_b_ptr + bn_off).to(tl.float32)
             cb_u = tl.load(cu_ptr + bn_off).to(tl.float32)
@@ -421,7 +422,7 @@ if HAS_TRITON:  # pragma: no cover - requires CUDA + Triton runtime
         gcv_part_ptr,  # *mut float32 [B_blk, N_pose, grid_q]
         inv_ds,
         c_idx,
-        B_blk: tl.constexpr,
+        B_blk,
         N_pose,
         P,
         K_hw,
@@ -443,7 +444,7 @@ if HAS_TRITON:  # pragma: no cover - requires CUDA + Triton runtime
         pp = P * P
         stride_b = N_pose * pp
 
-        for b in tl.static_range(B_blk):
+        for b in range(B_blk):
             bn_off = b * N_pose + n_pose
             db = tl.load(d_b_ptr + bn_off).to(tl.float32)
             cb_u = tl.load(cu_ptr + bn_off).to(tl.float32)
