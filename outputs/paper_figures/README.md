@@ -21,3 +21,8 @@ and synthetic projections generated with the registration renderer. Their titles
 and filenames are retained for discoverability; they do not represent validation
 against acquired patient fluoroscopy or a multi-patient cohort. Old figures and
 the browser demonstration must not be used as evidence of surgical suitability.
+
+Calibrated physical-millimeter and cone-beam validation is provided separately in
+`table25`–`table28`, `exp29`–`exp32` CSVs (`outputs/exp*.csv`), and
+`fig25`–`fig31` (including `exp32c` cone-beam GPU benchmarks on Kaggle Lumbar
+Spine CT, AMOS 0001 Thoracolumbar CT, and GE Clinical CT).

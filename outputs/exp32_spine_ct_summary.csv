@@ -1,0 +1,13 @@
+device,dataset,H,method,n_trials,mean_mtre_mm,median_mtre_mm,iqr_q25_mm,iqr_q75_mm,success_2mm_pct,mean_reg_s,mean_peak_vram_mb
+NVIDIA A100-SXM4-40GB,Kaggle_Lumbar_Spine_CT,256,DiffDRR Single-Start (f32 B=1),6,6.5,4.827,3.111,6.555,16.7,1.836,2784.0
+NVIDIA A100-SXM4-40GB,Kaggle_Lumbar_Spine_CT,256,"PoU-FVR Triton (2x4x2@80 bf16, B=64)",6,0.881,0.883,0.873,0.893,100.0,2.066,1348.0
+NVIDIA A100-SXM4-40GB,Kaggle_Lumbar_Spine_CT,256,"nanodrr triton+compile (bf16 n=500, B=64)",6,0.025,0.025,0.017,0.031,100.0,5.099,323.9
+NVIDIA A100-SXM4-40GB,Kaggle_Lumbar_Spine_CT,256,Hybrid PoU-Triton + nanodrr polish (<0.5GB),6,5.74,4.955,1.013,7.156,33.3,1.024,464.0
+NVIDIA A100-SXM4-40GB,Kaggle_Lumbar_Spine_CT,512,"PoU-FVR Triton (2x4x2@80 bf16, B=64)",4,1.147,1.141,1.139,1.15,100.0,3.517,1492.0
+NVIDIA A100-SXM4-40GB,Kaggle_Lumbar_Spine_CT,512,Hybrid PoU-Triton + nanodrr polish (<0.5GB),4,3.829,3.828,3.713,3.943,0.0,1.8,907.6
+NVIDIA A100-SXM4-40GB,AMOS_Thoracolumbar_CT,256,"PoU-FVR Triton (2x4x2@80 bf16, B=64)",6,3.748,3.749,3.697,3.775,0.0,2.105,1348.0
+NVIDIA A100-SXM4-40GB,AMOS_Thoracolumbar_CT,256,"nanodrr triton+compile (bf16 n=500, B=64)",6,0.08,0.079,0.076,0.087,100.0,5.289,324.3
+NVIDIA A100-SXM4-40GB,AMOS_Thoracolumbar_CT,256,Hybrid PoU-Triton + nanodrr polish (<0.5GB),6,0.567,0.534,0.515,0.582,100.0,0.995,464.4
+NVIDIA A100-SXM4-40GB,GE_Clinical_CT,256,"PoU-FVR Triton (2x4x2@80 bf16, B=64)",6,9.773,9.771,9.742,9.806,0.0,2.051,1348.0
+NVIDIA A100-SXM4-40GB,GE_Clinical_CT,256,"nanodrr triton+compile (bf16 n=500, B=64)",6,0.036,0.035,0.034,0.036,100.0,5.581,323.3
+NVIDIA A100-SXM4-40GB,GE_Clinical_CT,256,Hybrid PoU-Triton + nanodrr polish (<0.5GB),6,0.139,0.144,0.11,0.165,100.0,0.988,464.0

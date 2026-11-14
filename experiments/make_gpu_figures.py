@@ -300,10 +300,183 @@ def make_fig30() -> Path:
     return out_path
 
 
+def make_fig31() -> Path:
+    """Generate publication figure from verified exp32 matched B=64, precision, & spine CT CSVs."""
+    df_trials = _read_csv(OUT / "exp32_deepfluoro_matched_b64.csv")
+    df_sum = _read_csv(OUT / "exp32_deepfluoro_summary.csv")
+    prec = _read_csv(OUT / "exp32_precision_ablation.csv")
+    spine = _read_csv(OUT / "exp32_spine_ct_summary.csv")
+
+    plt.rcParams.update({
+        "font.size": 9.2,
+        "axes.titlesize": 10.2,
+        "axes.labelsize": 9.2,
+        "legend.fontsize": 7.6,
+        "xtick.labelsize": 8.0,
+        "ytick.labelsize": 8.0,
+    })
+
+    fig, axes = plt.subplots(1, 3, figsize=(15.6, 4.75), dpi=300)
+
+    # --- Panel (a): Matched B=64 DeepFluoro mTRE Boxplots + Speed/VRAM Labels (n=24) ---
+    ax = axes[0]
+    _style_ax(ax)
+    methods_a = [
+        ("DiffDRR Single-Start (f32 B=1)", "DiffDRR\nB=1 (f32)", "#C0392B"),
+        ("nanodrr triton+compile (bf16 n=500, B=64)", "nanodrr\nB=64 (bf16)", "#E7298A"),
+        ("PoU-FVR Triton (2x4x2@80 bf16, B=64)", "PoU-FVR\nB=64 (bf16)", "#2B59C3"),
+        ("Hybrid PoU-Triton + nanodrr polish (<0.5GB)", "Hybrid+\nnanodrr", "#D95F02"),
+        ("Hybrid PoU-Triton + DiffDRR polish", "Hybrid+\nDiffDRR", "#0B6E4F"),
+    ]
+    data_a = [
+        [float(r["final_mtre_mm"]) for r in df_trials if r["method"] == m_key]
+        for m_key, _, _ in methods_a
+    ]
+    bp = ax.boxplot(
+        data_a,
+        positions=np.arange(len(methods_a)),
+        widths=0.52,
+        patch_artist=True,
+        showfliers=False,
+        medianprops=dict(color="#111111", linewidth=1.6),
+        whiskerprops=dict(linewidth=1.1, color="#444444"),
+        capprops=dict(linewidth=1.1, color="#444444"),
+    )
+    rng = np.random.default_rng(7)
+    for idx, (patch, vals, (m_key, _, col)) in enumerate(zip(bp["boxes"], data_a, methods_a)):
+        patch.set_facecolor(col)
+        patch.set_alpha(0.32)
+        patch.set_edgecolor(col)
+        patch.set_linewidth(1.3)
+        jit = rng.uniform(-0.14, 0.14, size=len(vals))
+        ax.scatter(np.full(len(vals), idx) + jit, np.clip(vals, 0.0, 29.0), color=col, s=16, alpha=0.82, zorder=4)
+        srow = [r for r in df_sum if r["subset"] == "All_DeepFluoro" and r["method"] == m_key][0]
+        med_v = float(srow["median_mtre_mm"])
+        reg_v = float(srow["mean_reg_s"])
+        vram_v = float(srow["mean_peak_vram_mb"]) / 1024.0
+        lbl_ys = [19.8, 11.8, 4.5, 6.8, 3.8]
+        ax.text(
+            idx, lbl_ys[idx], f"med {med_v:.2f}\n{reg_v:.2f}s | {vram_v:.2f}G",
+            ha="center", va="bottom", fontsize=6.6, fontweight="bold", color=col, zorder=6,
+            bbox=dict(boxstyle="round,pad=0.16", fc="white", ec=col, alpha=0.92, lw=0.6),
+        )
+
+    ax.axhline(2.0, color="#b22222", linestyle="--", linewidth=1.0, label="2.0 mm threshold")
+    ax.set_xticks(np.arange(len(methods_a)))
+    ax.set_xticklabels([x[1] for x in methods_a], fontsize=7.6)
+    ax.set_ylabel("Final 6-DoF mTRE (mm) — Median & IQR")
+    ax.set_title("(a) Matched $B=64$ DeepFluoro ($n=24$, S01–S06)")
+    ax.set_ylim(-0.6, 31.2)
+    ax.text(
+        0.98, 0.96,
+        "DiffDRR B=64 probe (S01):\n184.1 s | 21.6 GB | OOM@64 (mb=4)\nWilcoxon Hybrid+DiffDRR:\np=1.5e-4 vs B=1 | p=2.3e-4 vs nano",
+        transform=ax.transAxes, ha="right", va="top", fontsize=6.8, color="#333333",
+        bbox=dict(boxstyle="round,pad=0.28", fc="#f8f9fa", ec="#bbbbbb", lw=0.7),
+    )
+
+    # --- Panel (b): Stratified Tier 1 vs Tier 2 Wide-Basin + f32/bf16 Inset ---
+    ax = axes[1]
+    _style_ax(ax)
+    m_b = [
+        ("DiffDRR Single-Start (f32 B=1)", "DiffDRR B=1", "#C0392B"),
+        ("nanodrr triton+compile (bf16 n=500, B=64)", "nanodrr B=64", "#E7298A"),
+        ("PoU-FVR Triton (2x4x2@80 bf16, B=64)", "PoU-FVR B=64", "#2B59C3"),
+        ("Hybrid PoU-Triton + nanodrr polish (<0.5GB)", "Hybrid+nano", "#D95F02"),
+        ("Hybrid PoU-Triton + DiffDRR polish", "Hybrid+DiffDRR", "#0B6E4F"),
+    ]
+    bx = np.arange(len(m_b))
+    bw = 0.36
+    t1_s2 = [float([r for r in df_sum if r["subset"] == "Tier1_Bounded" and r["method"] == k][0]["success_2mm_pct"]) for k, _, _ in m_b]
+    t2_s2 = [float([r for r in df_sum if r["subset"] == "Tier2_WideBasin" and r["method"] == k][0]["success_2mm_pct"]) for k, _, _ in m_b]
+    t2_s5 = [float([r for r in df_sum if r["subset"] == "Tier2_WideBasin" and r["method"] == k][0]["success_5mm_pct"]) for k, _, _ in m_b]
+
+    bars1 = ax.bar(bx - bw / 2, t1_s2, width=bw, color="#34495E", alpha=0.88, label="Tier 1 Bounded (<2 mm)")
+    bars2 = ax.bar(bx + bw / 2, t2_s2, width=bw, color="#1B9E77", alpha=0.88, label="Tier 2 Wide-Basin (<2 mm)")
+    ax.plot(bx + bw / 2, t2_s5, "D--", color="#0B6E4F", markersize=4.5, lw=1.2, label="Tier 2 Gross Lock (<5 mm)")
+
+    for bar, v in zip(bars1, t1_s2):
+        ax.text(bar.get_x() + bar.get_width() / 2, v + 1.8, f"{v:.0f}%", ha="center", va="bottom", fontsize=6.7, color="#2C3E50", fontweight="bold")
+    for bar, v in zip(bars2, t2_s2):
+        ax.text(bar.get_x() + bar.get_width() / 2, v + 1.8, f"{v:.0f}%", ha="center", va="bottom", fontsize=6.7, color="#0B6E4F", fontweight="bold")
+
+    ax.set_xticks(bx)
+    ax.set_xticklabels([x[1] for x in m_b], rotation=18, ha="right", fontsize=7.6)
+    ax.set_ylabel("Success Rate (%)")
+    ax.set_title("(b) Tier 1 Bounded vs. Tier 2 Wide-Basin (Unanchored)")
+    ax.set_ylim(0, 128)
+    ax.legend(loc="upper left", frameon=True, framealpha=0.92, fontsize=6.9)
+
+    # Small inset comparing f32 vs bf16 mTRE parity placed cleanly above PoU-FVR/Hybrid+nano bars
+    f32_vals = [float(r["final_mtre_mm"]) for r in prec if r["stage"] == "Reg_Tier1_Bounded" and r["precision"] == "float32"]
+    bf16_vals = [float(r["final_mtre_mm"]) for r in prec if r["stage"] == "Reg_Tier1_Bounded" and r["precision"] == "bfloat16"]
+    max_diff = max(abs(a - b) for a, b in zip(f32_vals, bf16_vals))
+    ax.text(
+        0.64, 0.96,
+        f"f32 vs bf16 Parity (S01–S06):\nmean {np.mean(f32_vals):.3f} vs {np.mean(bf16_vals):.3f} mm\nmax |Δ| = {max_diff:.3f} mm",
+        transform=ax.transAxes, ha="center", va="top", fontsize=6.7, color="#1A3A6E",
+        bbox=dict(boxstyle="round,pad=0.24", fc="#EEF4FF", ec="#2B59C3", lw=0.7),
+    )
+
+    # --- Panel (c): Spine & Abdominal CT Cone-Beam GPU Evaluation (exp32c) ---
+    ax = axes[2]
+    _style_ax(ax)
+    cohorts_c = [
+        ("Kaggle_Lumbar_Spine_CT", 256, "Kaggle\nLumbar 256²"),
+        ("Kaggle_Lumbar_Spine_CT", 512, "Kaggle\nLumbar 512²"),
+        ("AMOS_Thoracolumbar_CT", 256, "AMOS 0001\nTh-Lumbar"),
+        ("GE_Clinical_CT", 256, "GE Clinical\nQA CT"),
+    ]
+    m_c = [
+        ("PoU-FVR Triton (2x4x2@80 bf16, B=64)", "PoU-FVR B=64", "#2B59C3"),
+        ("Hybrid PoU-Triton + nanodrr polish (<0.5GB)", "Hybrid+nano (<0.5G)", "#D95F02"),
+        ("nanodrr triton+compile (bf16 n=500, B=64)", "nanodrr B=64", "#E7298A"),
+    ]
+    cx = np.arange(len(cohorts_c))
+    cw = 0.25
+    for midx, (m_key, lbl, col) in enumerate(m_c):
+        vals, s2s = [], []
+        for ds, hval, _ in cohorts_c:
+            match = [r for r in spine if r["dataset"] == ds and int(r["H"]) == hval and r["method"] == m_key]
+            vals.append(float(match[0]["median_mtre_mm"]) if match else np.nan)
+            s2s.append(float(match[0]["success_2mm_pct"]) if match else np.nan)
+        offs = (midx - 1) * cw
+        bars = ax.bar(cx + offs, np.nan_to_num(vals, nan=0.0), width=cw, color=col, alpha=0.86, label=lbl)
+        for bx_i, v, s2 in zip(bars, vals, s2s):
+            if np.isnan(v):
+                ax.text(bx_i.get_x() + bx_i.get_width() / 2, 0.2, "N/A", ha="center", va="bottom", fontsize=6.4, color="#666666")
+            else:
+                ax.text(bx_i.get_x() + bx_i.get_width() / 2, v + 0.18, f"{v:.2f}\n({s2:.0f}%)",
+                        ha="center", va="bottom", fontsize=6.1, fontweight="bold", color=col)
+
+    ax.axhline(2.0, color="#b22222", linestyle="--", linewidth=1.0)
+    ax.set_xticks(cx)
+    ax.set_xticklabels([c[2] for c in cohorts_c], fontsize=7.6)
+    ax.set_ylabel("Median 6-DoF mTRE (mm) & <2 mm Rate")
+    ax.set_title("(c) Clinical Spine & Abdominal CT Cone-Beam ($B=64$)")
+    ax.set_ylim(0, 12.2)
+    ax.legend(loc="upper left", frameon=True, framealpha=0.92, fontsize=7.2)
+    ax.text(
+        0.52, 0.96,
+        "Kaggle 256² DiffDRR B=1:\nmed 4.83 mm (16.7% <2mm)\nvs PoU-FVR: 0.88 mm (100%)",
+        transform=ax.transAxes, ha="left", va="top", fontsize=6.7, color="#922B21",
+        bbox=dict(boxstyle="round,pad=0.22", fc="#FFF5F5", ec="#C0392B", lw=0.6),
+    )
+
+    fig.tight_layout(w_pad=2.0)
+    FIG_OUT.mkdir(parents=True, exist_ok=True)
+    TEX_FIG.mkdir(parents=True, exist_ok=True)
+    out_path = FIG_OUT / "fig31_rebuttal_ablation.png"
+    fig.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    shutil.copy2(out_path, TEX_FIG / out_path.name)
+    return out_path
+
+
 def main() -> None:
     p29 = make_fig29()
     p30 = make_fig30()
-    print(f"Generated {p29} and {p30} (and copied to {TEX_FIG})")
+    p31 = make_fig31()
+    print(f"Generated {p29}, {p30}, and {p31} (and copied to {TEX_FIG})")
 
 
 if __name__ == "__main__":
