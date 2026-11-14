@@ -8,6 +8,7 @@ Also evaluates the grid_blocks x block_res Pareto frontier for IEEE TMI / MICCAI
 """
 
 import csv
+import gc
 import statistics
 import sys
 import time
@@ -32,6 +33,55 @@ def _mark_cudagraph_step():
 def _eval_nograd(fn: Callable):
     with torch.no_grad():
         return fn()
+
+
+def _bench_nano_torch(
+    nano_cone,
+    subj,
+    rt_inv: torch.Tensor,
+    n_samples: int,
+    warmup: int,
+    runs: int,
+) -> Tuple[str, float, float, float]:
+    """Benchmark nanodrr PyTorch raymarching, micro-batching sequentially if batch B OOMs."""
+    label = f"nanodrr torch (n={n_samples} fwd)"
+    B = int(rt_inv.shape[0])
+    try:
+        w_ms, g_ms, peak_mb = _cuda_time_ms(
+            lambda: _eval_nograd(lambda: nano_cone(subj, rt_inv, n_samples=n_samples, backend="torch")),
+            warmup=warmup,
+            runs=runs,
+        )
+        return label, w_ms, g_ms, peak_mb
+    except torch.OutOfMemoryError:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    for mb in (16, 8, 4, 2, 1):
+        if mb >= B:
+            continue
+
+        def _chunked():
+            with torch.no_grad():
+                return torch.cat(
+                    [
+                        nano_cone(subj, rt_inv[i : i + mb], n_samples=n_samples, backend="torch")
+                        for i in range(0, B, mb)
+                    ],
+                    dim=0,
+                )
+
+        try:
+            w_ms, g_ms, peak_mb = _cuda_time_ms(_chunked, warmup=warmup, runs=runs)
+            return f"{label} [mb={mb}]", w_ms, g_ms, peak_mb
+        except torch.OutOfMemoryError:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
+    raise torch.OutOfMemoryError(f"{label} OOM even at mb=1 for B={B}")
 
 
 def _cuda_time_ms(fn: Callable, warmup: int = 12, runs: int = 50) -> Tuple[float, float, float]:
@@ -148,6 +198,8 @@ def load_deepfluoro_subject01() -> str:
 
 def run_benchmark() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if device.type == "cuda" and hasattr(torch, "_dynamo"):
+        torch._dynamo.config.cache_size_limit = 64
     gpu_label = torch.cuda.get_device_name(0) if device.type == "cuda" else "CPU"
     print(f"=== Experiment 29 GPU Benchmark | Device={device} ({gpu_label}) | Triton={HAS_TRITON} ===")
     verify_triton_parity(device)
@@ -204,6 +256,8 @@ def run_benchmark() -> None:
         delx = 2.0 * (128.0 / H)
         k_inv = make_k_inv(sdd=1020.0, delx=delx, dely=delx, x0=0.0, y0=0.0, height=H, width=H).to(device)
         lat = PerspectiveSlabFVR.make_pinhole_lattice(k_inv, sdd_mm=1020.0, height=H, width=H)
+        nano_cone = NanoDRR(k_inv=k_inv, sdd=torch.tensor([1020.0], device=device), height=H, width=H)
+        nano_comp = torch.compile(nano_cone, mode="default") if device.type == "cuda" else nano_cone
 
         for B in [1, 16, 64]:
             if device.type != "cuda" and ((H == 512 and B > 1) or B == 64):
@@ -212,8 +266,6 @@ def run_benchmark() -> None:
             xyz = torch.tensor([[0.0, 850.0, 0.0]], device=device).expand(B, 3)
             rt_inv = make_rt_inv(rot, xyz, orientation="AP", isocenter=n_subj_f32.isocenter)
             rt_inv_fvr = make_rt_inv(rot, xyz, orientation="AP", isocenter=torch.zeros(3, device=device))
-            nano_cone = NanoDRR(k_inv=k_inv, sdd=torch.tensor([1020.0], device=device), height=H, width=H)
-            nano_comp = torch.compile(nano_cone, mode="reduce-overhead") if device.type == "cuda" else nano_cone
 
             if B == 1:
                 with torch.no_grad():
@@ -226,6 +278,7 @@ def run_benchmark() -> None:
                 )
 
             specs: List[Tuple[str, Callable, bool]] = []
+            drr_diff = None
             if B == 1 and H <= 256:
                 drr_diff = DiffDRR(d_subj, sdd=1020.0, height=H, delx=delx).to(device)
                 p_diff = convert(
@@ -236,7 +289,47 @@ def run_benchmark() -> None:
                 )
                 specs.append(("DiffDRR (f32 fwd)", lambda m=drr_diff, p=p_diff: m(p), False))
 
-            specs.append(("nanodrr torch (n=500 fwd)", lambda m=nano_cone, s=n_subj_f32, p=rt_inv: m(s, p, n_samples=500, backend="torch"), False))
+            print(f"--- H={H}x{H}, Batch B={B} ---")
+            if drr_diff is not None:
+                name, fn, is_fb = specs.pop(0)
+                wall_ms, gpu_ms, peak_mb = _cuda_time_ms(lambda f=fn: _eval_nograd(f), warmup=warmup, runs=runs)
+                fps = (B * 1000.0) / wall_ms if wall_ms > 0 else 0.0
+                print(
+                    f"  {name:<42} wall={wall_ms:8.3f} ms | gpu={gpu_ms:8.3f} ms | "
+                    f"{fps:10.1f} FPS | work_mem={peak_mb:6.1f} MB"
+                )
+                rows.append({
+                    "device": gpu_label, "H": H, "B": B, "method": name,
+                    "wall_ms": round(wall_ms, 4), "gpu_ms": round(gpu_ms, 4),
+                    "fps": round(fps, 2), "working_mem_mb": round(peak_mb, 2), "prep_s": 0.0,
+                })
+                del drr_diff
+                if device.type == "cuda":
+                    torch.cuda.empty_cache()
+
+            try:
+                name, wall_ms, gpu_ms, peak_mb = _bench_nano_torch(nano_cone, n_subj_f32, rt_inv, 500, warmup, runs)
+                fps = (B * 1000.0) / wall_ms if wall_ms > 0 else 0.0
+                print(
+                    f"  {name:<42} wall={wall_ms:8.3f} ms | gpu={gpu_ms:8.3f} ms | "
+                    f"{fps:10.1f} FPS | work_mem={peak_mb:6.1f} MB"
+                )
+                rows.append({
+                    "device": gpu_label, "H": H, "B": B, "method": name,
+                    "wall_ms": round(wall_ms, 4), "gpu_ms": round(gpu_ms, 4),
+                    "fps": round(fps, 2), "working_mem_mb": round(peak_mb, 2), "prep_s": 0.0,
+                })
+            except torch.OutOfMemoryError as exc:
+                if device.type == "cuda":
+                    torch.cuda.empty_cache()
+                print(f"  {'nanodrr torch (n=500 fwd)':<42} OOM ({exc})")
+                rows.append({
+                    "device": gpu_label, "H": H, "B": B, "method": "nanodrr torch (n=500 fwd)",
+                    "wall_ms": "OOM", "gpu_ms": "OOM", "fps": 0.0, "working_mem_mb": "OOM", "prep_s": 0.0,
+                })
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
+
             if device.type == "cuda":
                 specs.append(("nanodrr triton (bf16 n=500 fwd)", lambda m=nano_cone, s=n_subj_bf16, p=rt_inv: m(s, p, n_samples=500), False))
                 specs.append(("nanodrr triton+compile (bf16 n=500 fwd)", lambda m=nano_comp, s=n_subj_bf16, p=rt_inv: m(s, p, n_samples=500), False))
@@ -270,7 +363,6 @@ def run_benchmark() -> None:
                     specs.append(("nanodrr triton (bf16 n=500 fwd+bwd)", _nano_fb, True))
                 specs.append(("PoU-FVR Pinhole (2x2x2 fwd+bwd)", _pou_fb, True))
 
-            print(f"--- H={H}x{H}, Batch B={B} ---")
             for name, fn, is_fb in specs:
                 run_fn = fn if is_fb else (lambda f=fn: _eval_nograd(f))
                 try:
@@ -308,6 +400,20 @@ def run_benchmark() -> None:
                     })
                 if device.type == "cuda":
                     torch.cuda.empty_cache()
+
+            gc.collect()
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
+
+        del nano_comp, nano_cone
+        gc.collect()
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+
+    del fvr_pou_f32, fvr_pou_tri, fvr_pou_comp, fvr_torch, fvr_torch_comp
+    gc.collect()
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
 
     print("\n=== PoU-FVR Block / Resolution Pareto Ablation (H=256x256, sdd=1020mm) ===")
     H = 256
@@ -355,6 +461,10 @@ def run_benchmark() -> None:
                 "ncc_vs_raymarch": round(ncc_val, 5),
                 "working_mem_mb": round(p_mb, 2),
             })
+            del m, pred
+            gc.collect()
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
 
     with open(out_dir / "exp29_gpu_benchmark.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
