@@ -54,37 +54,45 @@ and 3D anatomical fiducials (`128×128` interior crop, CPU):
   `NCC(Diff-FVR, DiffDRR) = 0.9550`, `2.24 s` mean Diff-FVR registration
   (`6.04 mm`), and `3.41 mm` Hybrid (`123.27 s`) vs. `3.73 mm` DiffDRR (`157.97 s`).
 
-## NVIDIA A100 GPU Benchmark & Cone-Beam PoU-FVR Pareto Ablation (`exp29`)
+## NVIDIA A100 GPU Benchmark, PoU-FVR Pareto Ablation (`exp29`), & Multi-Start Registration (`exp30`)
 
 `experiments/exp29_gpu_triton_and_ablation.py` (verified on **NVIDIA A100-SXM4-40GB**,
-commit `d0b8384`, `Triton=True`, zero OOM entries) benchmarks full `H×H` batched
-rendering across `H ∈ {128, 200, 256, 512}` and `B ∈ {1, 16, 64}` against DiffDRR
-and `nanodrr` (`n=500` PyTorch and Triton/`torch.compile` kernels), with sequential
-micro-batching (`[mb=16]`) automatically engaged only where `nanodrr torch` at
-`512×512, B=64` would otherwise exceed 40 GB VRAM (`93.75 GiB` unchunked):
+commit `53158de`, `Triton=True`, zero OOM entries across all 135 `(H, B, method)` cells)
+benchmarks SE(3)-invariant ray-cached, fused-Triton (`pou_pinhole_warp_sum`), and
+`CUDAGraph`-captured `PoU-FVR` across `H ∈ {128, 200, 256, 512}` and `B ∈ {1, 16, 64}`
+against DiffDRR and `nanodrr` (`n=500` and `n=200` PyTorch and Triton/`torch.compile`
+kernels), with sequential micro-batching (`[mb=16]`) automatically engaged only where
+`nanodrr torch` at `512×512, B=64` would otherwise exceed 40 GB VRAM (`93.75 GiB` unchunked):
 
-- **Cone-Beam Perspective (`PoU-FVR compile`, `2×2×2` bf16, `0.473 s` 3D FFT prep):**
-  - `256×256, B=1`: **`1.43 ms`** (`699 FPS`, `9.51 MB`) — **`11.5x`** faster than
-    `DiffDRR f32` (`16.41 ms`, `2,581.5 MB`) and **`1.97x`** faster than `nanodrr torch` (`2.81 ms`).
-  - `256×256, B=64`: **`4.37 ms`** (`14,645 FPS`, `608 MB`) — **`26.4x`** faster than
-    `nanodrr torch` (`115.40 ms`, `32,144 MB`) and **`3.26x`** faster than
-    `nanodrr triton+compile (n=500)` (`14.25 ms`).
-  - `512×512, B=16`: **`2.99 ms`** (`5,344 FPS`, `584 MB`) — **`37.5x`** faster than
-    `nanodrr torch` (`112.27 ms`, `32,145 MB`) and **`4.77x`** faster than
-    `nanodrr triton+compile (n=500)` (`14.29 ms`).
-  - `512×512, B=64`: **`9.27 ms`** (`6,903 FPS`, `2,336 MB`) — **`48.1x`** faster than
-    `nanodrr torch [mb=16]` (`445.90 ms`, `32,193 MB`) and **`5.98x`** faster than
-    `nanodrr triton+compile (n=500)` (`55.41 ms`).
+- **Cone-Beam Forward Latency & Memory (`PoU-FVR Triton+CUDAGraph` / `PoU-FVR Triton`, `2×2×2` bf16, `0.394 s` 3D FFT prep):**
+  - `256×256, B=1`: **`0.108 ms`** `CUDAGraph` (`9,254 FPS`) / `1.241 ms` eager (`5.0 MB`) — **`152x`** faster than `DiffDRR f32` (`16.425 ms`, `2,581.5 MB`), **`6.5x`** faster than `nanodrr triton+compile (n=500)` (`0.707 ms`), and **`5.3x`** faster than `n=200` (`0.570 ms`).
+  - `256×256, B=64`: **`1.969 ms`** `CUDAGraph` (`32,501 FPS`) / `2.703 ms` eager (`320.0 MB`) — **`58.7x`** faster than `nanodrr torch` (`115.53 ms`, `32,144 MB`), **`7.25x`** faster than `nanodrr triton+compile (n=500)` (`14.28 ms`), and **`3.06x`** faster than `n=200` (`6.03 ms`).
+  - `512×512, B=1`: **`0.114 ms`** `CUDAGraph` (`8,738 FPS`) — **`11.8x`** faster than `nanodrr triton+compile (n=500)` (`1.352 ms`) and **`7.3x`** faster than `n=200` (`0.835 ms`).
+  - `512×512, B=16`: **`0.576 ms`** `CUDAGraph` (`27,773 FPS`) / `1.386 ms` eager (`80.0 MB`) — **`195x`** faster than `nanodrr torch` (`112.42 ms`, `32,145 MB`) and **`24.7x`** faster than `nanodrr triton+compile (n=500)` (`14.24 ms`).
+  - `512×512, B=64`: **`2.415 ms`** `CUDAGraph` (`26,506 FPS`) / `3.163 ms` eager (`320.0 MB`) — **`185x`** faster than `nanodrr torch [mb=16]` (`446.13 ms`, `32,193 MB`), **`23.0x`** faster than `nanodrr triton+compile (n=500)` (`55.43 ms`), and **`9.4x`** faster than `n=200` (`22.65 ms`).
+- **Full End-to-End Differentiable `fwd+bwd` Training Throughput (`PoU-FVR Triton` vs. `nanodrr triton n=500`):**
+  - `256×256, B=16`: **`4.270 ms`** (`80.0 MB`) vs. `10.318 ms` (**`2.42x`**).
+  - `256×256, B=64`: **`7.074 ms`** (`320.0 MB`) vs. `38.836 ms` (**`5.49x`**).
+  - `512×512, B=16`: **`6.137 ms`** (`80.0 MB`) vs. `38.628 ms` (**`6.29x`**).
+  - `512×512, B=64`: **`21.843 ms`** (`320.0 MB`) vs. `150.999 ms` (**`6.91x`**).
 - **Parallel-Beam Dual-Domain Loss (`TorchDiffFVR Zero-IFFT NCC`, zero-IFFT in loop):**
-  Sustains `0.65–1.29 ms` up to `256×256, B=64` (`49,573 FPS`, `96 MB`) and
-  `3.45 ms` at `512×512, B=64` (`18,529 FPS`, `384 MB`).
+  Sustains `0.666–1.294 ms` up to `256×256, B=64` (`49,454 FPS`, `96.0 MB`) and
+  `3.470 ms` at `512×512, B=64` (`18,445 FPS`, `384.0 MB`).
 - **PoU-FVR Block / Resolution Pareto Ablation (`H=256×256, sdd=1020 mm`, `B=1`):**
-  Across `1×1×1` (`6.13–6.34 MB`, `1.87–1.89 ms`, `NCC=0.921–0.934`), `2×2×2` (`21.44–24.44 MB`,
-  `1.88–1.98 ms`, `NCC=0.926–0.942`), and `2×4×2` (`39.13–45.13 MB`, `1.90–1.92 ms`,
-  `NCC=0.932–0.951`), forward latency stays virtually constant (`1.87–1.98 ms`) vs.
-  synthetic ray-marching ground truth; full CSVs are saved in
-  [outputs/exp29_gpu_benchmark.csv](outputs/exp29_gpu_benchmark.csv) and
-  [outputs/exp29_pou_ablation.csv](outputs/exp29_pou_ablation.csv).
+  Across `1×1×1` (`0.63–0.98 MB`, `1.20 ms`, `NCC=0.921–0.934`), `2×2×2` (`2.82–7.82 MB`,
+  `1.22–1.23 ms`, `NCC=0.926–0.942`), `2×4×2 @ 48–96` (`5.63–22.50 MB`, `1.23–1.26 ms`,
+  `NCC=0.932–0.955`, `EdgeNCC=0.508–0.746`), and `4×4×2 @ 80` (`31.25 MB`, `1.26 ms`,
+  **`NCC=0.9633`**, `EdgeNCC=0.7319`), fused-Triton forward latency stays nearly flat at
+  `1.20–1.26 ms` vs. synthetic ray-marching ground truth.
+- **Bi-Planar `B=64` Multi-Start GPU Registration (`exp30`, 10 DeepFluoro trials, mean init `15.79 mm`, 50 steps):**
+  - `PoU-FVR Triton (2×4×2@80 bf16)`: **`0.945 mm`** mean mTRE (`0.863 mm` median), **`100% < 2 mm`**, `7.177 s` mean (`2.16–2.23 s` steady-state after trial-1 Triton autotune), `1,348 MB` peak VRAM.
+  - `Hybrid PoU-Triton + nanodrr polish`: **`1.490 mm`** mean mTRE (`1.479 mm` median), **`100% < 2 mm`**, **`1.327 s`** mean (`1.14–1.19 s` steady-state), `464 MB` peak VRAM (**`4.72x`** faster than `nanodrr triton+compile`).
+  - `nanodrr triton+compile (bf16 n=500)`: `1.503 mm` mean mTRE, `100% < 2 mm`, `6.263 s` mean, `355 MB` peak VRAM.
+  - `nanodrr torch (f32 n=500)`: **`OOM`** at `B=64` during autograd on all trials.
+  Full CSVs are saved in [outputs/exp29_gpu_benchmark.csv](outputs/exp29_gpu_benchmark.csv),
+  [outputs/exp29_pou_ablation.csv](outputs/exp29_pou_ablation.csv),
+  [outputs/exp30_gpu_multistart_reg.csv](outputs/exp30_gpu_multistart_reg.csv), and
+  [outputs/exp30_gpu_multistart_summary.csv](outputs/exp30_gpu_multistart_summary.csv).
 
 ## Projection geometry and physical units
 
