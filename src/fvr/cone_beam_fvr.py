@@ -112,6 +112,29 @@ def edge_dominant_ncc(
     return (1.0 - multiscale_weight) * g_fine + multiscale_weight * g_coarse
 
 
+SLAB_PRESETS: Dict[str, Dict[str, object]] = {
+    "fast_coarse": {"grid_blocks": (2, 2, 2), "block_res": 64, "dtype": torch.bfloat16},
+    "balanced": {"grid_blocks": (2, 4, 2), "block_res": 80, "dtype": torch.bfloat16},
+    "isotropic": {"grid_blocks": (4, 4, 4), "block_res": 64, "dtype": torch.bfloat16},
+}
+
+
+def sample_isocenter_parity_offsets(vox_spacing: Union[float, Tuple[float, float, float], torch.Tensor]) -> torch.Tensor:
+    """
+    Generate the 27-point per-axis ``{-0.5, 0, +0.5}^3`` voxel-center parity offset table.
+
+    Scaled by voxel spacing ``vox_spacing``, these candidate shifts resolve joint View-A / View-B
+    half-voxel isocenter parity ambiguities across mixed even/odd CT volume dimensions.
+    """
+    sp = torch.as_tensor(vox_spacing, dtype=torch.float32)
+    if sp.ndim == 0:
+        sp = sp.repeat(3)
+    sp = sp.flatten()[:3]
+    vals = (-0.5, 0.0, 0.5)
+    grid = torch.tensor([[ix, iy, iz] for ix in vals for iy in vals for iz in vals], dtype=torch.float32, device=sp.device)
+    return grid * sp.unsqueeze(0)
+
+
 class PerspectiveSlabFVR(nn.Module):
     """
     Differentiable Partition-of-Unity Cone-Beam Fourier Volume Renderer.
@@ -120,6 +143,31 @@ class PerspectiveSlabFVR(nn.Module):
     - Isotropic/metric 3D NumPy/Torch volumes via ``PerspectiveSlabFVR.from_volume(...)``
     - Calibrated DiffDRR subjects via ``PerspectiveSlabFVR.from_diffdrr_subject(...)``
     """
+
+    SLAB_PRESETS = SLAB_PRESETS
+
+    @classmethod
+    def resolve_slab_preset(
+        cls,
+        preset: Optional[str],
+        grid_blocks: Optional[Tuple[int, int, int]] = None,
+        block_res: Optional[int] = None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> Tuple[Tuple[int, int, int], int, torch.dtype]:
+        """Resolve named slab preset with explicit parameter overrides."""
+        if preset is not None:
+            if preset not in cls.SLAB_PRESETS:
+                raise ValueError(f"Unknown slab preset {preset!r}; expected one of {tuple(cls.SLAB_PRESETS)}")
+            cfg = cls.SLAB_PRESETS[preset]
+            gb = grid_blocks if grid_blocks is not None else tuple(cfg["grid_blocks"])  # type: ignore[arg-type]
+            br = int(block_res if block_res is not None else cfg["block_res"])  # type: ignore[arg-type]
+            dt = dtype if dtype is not None else cfg["dtype"]  # type: ignore[assignment]
+            return gb, br, dt  # type: ignore[return-value]
+        return (
+            grid_blocks if grid_blocks is not None else (2, 2, 2),
+            int(block_res if block_res is not None else 64),
+            dtype if dtype is not None else torch.float32,
+        )
 
     def __init__(
         self,
@@ -285,11 +333,14 @@ class PerspectiveSlabFVR(nn.Module):
         cls,
         vol_zyx: Union[np.ndarray, torch.Tensor],
         vox_mm: float = 1.0,
-        grid_blocks: Tuple[int, int, int] = (2, 2, 2),
-        block_res: int = 64,
+        grid_blocks: Optional[Tuple[int, int, int]] = None,
+        block_res: Optional[int] = None,
         pad_mult: int = 2,
         overlap: float = 0.25,
         center_mode: str = "pixel_center",
+        preset: Optional[str] = None,
+        dtype: Optional[torch.dtype] = None,
+        **kwargs,
     ) -> "PerspectiveSlabFVR":
         """
         Construct cone-beam PoU-FVR from an isotropic (Z, Y, X) attenuation volume.
@@ -298,7 +349,10 @@ class PerspectiveSlabFVR(nn.Module):
             center_mode: ``"pixel_center"`` aligns the middle of pixel indices ``(N-1)/2``
                 with world ``(0, 0, 0)``; ``"grid_center"`` aligns ``N/2`` (matching
                 ``scipy.ndimage`` rotation-center conventions in C-arm DICOM phantoms).
+            preset: Optional named slab configuration (``"fast_coarse"``, ``"balanced"``,
+                or ``"isotropic"`` for 4x4x4@64 wide-field accuracy).
         """
+        gb, br, dt = cls.resolve_slab_preset(preset, grid_blocks, block_res, dtype)
         vt = torch.as_tensor(vol_zyx, dtype=torch.float32)
         nz, ny, nx = vt.shape
         v = float(vox_mm)
@@ -313,23 +367,33 @@ class PerspectiveSlabFVR(nn.Module):
             vox_mm=v,
             origin_world_mm=origin,
             axis_signs=(1.0, 1.0, 1.0),
-            grid_blocks=grid_blocks,
-            block_res=block_res,
+            grid_blocks=gb,
+            block_res=br,
             pad_mult=pad_mult,
             overlap=overlap,
+            dtype=dt,
+            **kwargs,
         )
 
     @classmethod
     def from_diffdrr_subject(
         cls,
         subject,
-        grid_blocks: Tuple[int, int, int] = (2, 2, 2),
-        block_res: int = 80,
+        grid_blocks: Optional[Tuple[int, int, int]] = None,
+        block_res: Optional[int] = None,
         pad_mult: int = 2,
         overlap: float = 0.25,
+        preset: Optional[str] = None,
+        dtype: Optional[torch.dtype] = None,
         **kwargs,
     ) -> "PerspectiveSlabFVR":
         """Construct cone-beam PoU-FVR matching DiffDRR Subject world RAS coordinates."""
+        gb, br, dt = cls.resolve_slab_preset(
+            preset,
+            grid_blocks if grid_blocks is not None or preset is not None else (2, 2, 2),
+            block_res if block_res is not None or preset is not None else 80,
+            dtype,
+        )
         vol_raw = subject.density.data.squeeze(0).float()
         vol_world = vol_raw.flip(0, 1)  # align (+x, +y, +z) in RAS order
         nx, ny, nz = vol_world.shape
@@ -347,11 +411,12 @@ class PerspectiveSlabFVR(nn.Module):
             vox_mm=(sx, sy, sz),
             origin_world_mm=origin,
             axis_signs=(1.0, 1.0, 1.0),
-            grid_blocks=grid_blocks,
-            block_res=block_res,
+            grid_blocks=gb,
+            block_res=br,
             pad_mult=pad_mult,
             overlap=overlap,
             energy_thresh=1e-3,
+            dtype=dt,
             **kwargs,
         )
 
@@ -785,6 +850,7 @@ class PerspectiveSlabFVR(nn.Module):
         coarse_steps: int = 15,
         fine_steps: int = 45,
         fine_drr_polish_steps: int = 0,
+        polish_top_k: int = 1,
         seed: int = 42,
     ) -> Tuple[object, Dict[str, object]]:
         """
@@ -900,13 +966,37 @@ class PerspectiveSlabFVR(nn.Module):
 
         # Optional Stage 4: Ray-cast DiffDRR fine polish under identical edge-dominant metric
         if fine_drr_polish_steps > 0:
-            opt_h = torch.optim.Adam([{"params": [r], "lr": 0.002}, {"params": [t], "lr": 0.4}])
-            for _ in range(fine_drr_polish_steps):
-                opt_h.zero_grad()
-                pa, pb = _pose_pair(r, t)
-                l = _loss(drrA(pa), drrB(pb), xrayA, xrayB)
-                l.backward()
-                opt_h.step()
+            k_pol = min(max(1, int(polish_top_k)), len(refined))
+            if k_pol == 1:
+                opt_h = torch.optim.Adam([{"params": [r], "lr": 0.002}, {"params": [t], "lr": 0.4}])
+                for _ in range(fine_drr_polish_steps):
+                    opt_h.zero_grad()
+                    pa, pb = _pose_pair(r, t)
+                    l = _loss(drrA(pa), drrB(pb), xrayA, xrayB)
+                    l.backward()
+                    opt_h.step()
+            else:
+                r_k = torch.cat([r.detach()] + [refined[i][1] for i in range(1, k_pol)], dim=0).clone().requires_grad_(True)
+                t_k = torch.cat([t.detach()] + [refined[i][2] for i in range(1, k_pol)], dim=0).clone().requires_grad_(True)
+                opt_h = torch.optim.Adam([{"params": [r_k], "lr": 0.002}, {"params": [t_k], "lr": 0.4}])
+                for _ in range(fine_drr_polish_steps):
+                    opt_h.zero_grad()
+                    pa, pb = _pose_pair(r_k, t_k)
+                    l_k = 1.0 - 0.5 * (
+                        edge_dominant_ncc(drrA(pa), xrayA, reduction="none")
+                        + edge_dominant_ncc(drrB(pb), xrayB, reduction="none")
+                    )
+                    l_k.sum().backward()
+                    opt_h.step()
+                with torch.no_grad():
+                    pa, pb = _pose_pair(r_k, t_k)
+                    l_k = 1.0 - 0.5 * (
+                        edge_dominant_ncc(drrA(pa), xrayA, reduction="none")
+                        + edge_dominant_ncc(drrB(pb), xrayB, reduction="none")
+                    )
+                    best_idx = int(torch.argmin(l_k))
+                    r = r_k[best_idx : best_idx + 1].detach()
+                    t = t_k[best_idx : best_idx + 1].detach()
 
         with torch.no_grad():
             best_poseA, best_poseB = _pose_pair(r, t)

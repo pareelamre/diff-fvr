@@ -15,20 +15,24 @@ from .registration_3d2d import compute_mtre_6dof
 from .cli import main_render, main_register
 
 try:
-    from .cone_beam_fvr import PerspectiveSlabFVR
+    from .cone_beam_fvr import PerspectiveSlabFVR, SLAB_PRESETS, sample_isocenter_parity_offsets
     from .torch_engine import TorchDiffFVREngine
     _has_torch = True
 except ImportError:
     PerspectiveSlabFVR = None
+    SLAB_PRESETS = None
+    sample_isocenter_parity_offsets = None
     TorchDiffFVREngine = None
     _has_torch = False
 
-__version__ = "1.1.1"
+__version__ = "1.2.0"
 
 __all__ = [
     "FourierVolumeRenderer",
     "DifferentiableFourierVolumeRenderer",
     "PerspectiveSlabFVR",
+    "SLAB_PRESETS",
+    "sample_isocenter_parity_offsets",
     "RobustDiffFVREngine",
     "detect_radio_opaque_metal",
     "SpectralGradientEngine",

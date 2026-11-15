@@ -6,7 +6,13 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from fvr.cone_beam_fvr import PerspectiveSlabFVR, _make_pou_1d, edge_dominant_ncc
+from fvr.cone_beam_fvr import (
+    PerspectiveSlabFVR,
+    SLAB_PRESETS,
+    _make_pou_1d,
+    edge_dominant_ncc,
+    sample_isocenter_parity_offsets,
+)
 from fvr.triton_slice import (
     fourier_slice_3d_torch,
     pou_pinhole_warp_sum_analytical_ref,
@@ -239,6 +245,24 @@ class TestConeBeamFVR(unittest.TestCase):
         self.assertTrue(torch.allclose(out_inv, out_exp, atol=1e-4, rtol=1e-4))
         self.assertTrue(torch.allclose(r_inv.grad, r_exp.grad, atol=5e-4, rtol=1e-3))
         self.assertTrue(torch.allclose(t_inv.grad, t_exp.grad, atol=5e-4, rtol=1e-3))
+
+    def test_slab_presets_and_parity_offsets(self):
+        """Verify exp33 named slab presets (including isotropic 4x4x4@64) and 27-point parity table."""
+        self.assertIn("isotropic", SLAB_PRESETS)
+        self.assertEqual(SLAB_PRESETS["isotropic"]["grid_blocks"], (4, 4, 4))
+        self.assertEqual(SLAB_PRESETS["isotropic"]["block_res"], 64)
+
+        vol = np.zeros((32, 32, 32), dtype=np.float32)
+        vol[8:24, 8:24, 8:24] = 0.5
+        fvr_iso = PerspectiveSlabFVR.from_volume(vol, vox_mm=2.0, preset="isotropic", block_res=16)
+        self.assertEqual(fvr_iso.B, 64)
+        self.assertEqual(fvr_iso.F_blk_ri.dtype, torch.bfloat16)
+        with self.assertRaises(ValueError):
+            PerspectiveSlabFVR.resolve_slab_preset("nonexistent")
+
+        offs = sample_isocenter_parity_offsets((1.0, 2.0, 4.0))
+        self.assertEqual(offs.shape, (27, 3))
+        self.assertTrue(torch.allclose(offs.abs().max(dim=0).values, torch.tensor([0.5, 1.0, 2.0])))
 
 
 if __name__ == "__main__":
