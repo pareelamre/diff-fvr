@@ -156,7 +156,7 @@ def _sample_multistart_theta(
     """Sample (B, 6) seeds in [rad, mm]. Optionally keeps seed[0]=0 for Tier 1 baseline parity."""
     rng = np.random.default_rng(seed)
     theta = np.zeros((B, 6), dtype=np.float32)
-    start_idx = 1 if (keep_zero and B > 1) else 0
+    start_idx = 1 if keep_zero else 0
     if B > start_idx:
         rot_lim = rot_deg * (math.pi / 180.0)
         theta[start_idx:, :3] = rng.uniform(-rot_lim, rot_lim, size=(B - start_idx, 3)).astype(np.float32)
@@ -260,10 +260,28 @@ def _optimize_multistart_microbatched(
 
 
 def _load_deepfluoro_view(subject, subj_dir: str, vid: str, H: int, device: torch.device):
-    pt = torch.load(os.path.join(subj_dir, "xrays", f"{vid}.pt"), weights_only=False)
+    pt = torch.load(os.path.join(subj_dir, "xrays", f"{vid}.pt"), weights_only=True)
     intr = pt["intrinsics"]
-    pose = RigidTransform(pt["pose"].to(device=device, dtype=torch.float32))
-    dcm = pydicom.dcmread(os.path.join(subj_dir, "xrays", f"{vid}.dcm")).pixel_array.astype("float32")
+    matrix = pt['pose'].to(device=device, dtype=torch.float32)
+    if (matrix.shape != (1,4,4) or not torch.isfinite(matrix).all()
+            or not torch.allclose(matrix[0,3],torch.tensor([0.,0.,0.,1.],device=device))
+            or not torch.allclose(matrix[0,:3,:3].T@matrix[0,:3,:3],torch.eye(3,device=device),atol=1e-4)
+            or not torch.isclose(torch.linalg.det(matrix[0,:3,:3]),torch.tensor(1.,device=device),atol=1e-4)):
+        raise ValueError('View pose must be finite SE(3).')
+    pose = RigidTransform(matrix)
+    values = np.array([intr[k] for k in ('sdd','delx','dely','x0','y0','height','width')],dtype=float)
+    if (not np.isfinite(values).all() or np.any(values[:3]<=0)
+            or intr['height'] != intr['width'] or int(intr['height']) != intr['height']
+            or intr['height'] < 2 or not np.isclose(intr['delx'],intr['dely'])):
+        raise ValueError('View requires finite square detector geometry and square pixels.')
+    ds = pydicom.dcmread(os.path.join(subj_dir, "xrays", f"{vid}.dcm"))
+    if ds.PhotometricInterpretation != 'MONOCHROME2' or int(ds.SamplesPerPixel) != 1:
+        raise ValueError('View requires single-sample MONOCHROME2 pixels.')
+    if hasattr(ds,'PixelSpacing') and not np.allclose(ds.PixelSpacing,[intr['dely'],intr['delx']],rtol=1e-4):
+        raise ValueError('View pixel spacing does not match calibration metadata.')
+    dcm = ds.pixel_array.astype('float32')
+    if dcm.ndim != 2 or min(dcm.shape) < intr['height'] or dcm.shape[0] != dcm.shape[1]:
+        raise ValueError('View requires a square image containing the calibrated crop.')
     off = (dcm.shape[0] - intr["height"]) // 2
     crop = -dcm[off : off + intr["height"], off : off + intr["width"]]
     xray = (
@@ -706,7 +724,7 @@ def run_exp32a_and_b(
                 _eval_and_record(
                     trial_rows, device, common, "DiffDRR Single-Start (f32 B=1)", 0.0,
                     pA_init_mat, poseA, fids,
-                    lambda: _optimize_multistart(_make_drr_pair(), seeds[:1], xrayA, xrayB, steps=steps_drr),
+                    lambda: _optimize_multistart(_make_drr_pair(), torch.zeros_like(seeds[:1]), xrayA, xrayB, steps=steps_drr),
                 )
 
                 if has_nano:
@@ -1096,7 +1114,7 @@ def run_exp32c_spine_ct(
                             pA_init_mat, poseA_gt, fids,
                             lambda: _optimize_multistart(
                                 lambda dT: (drrA(RigidTransform(dT @ pA_init_mat)), drrB(RigidTransform(dT @ pB_init_mat))),
-                                seeds[:1], xrayA, xrayB, steps=2 if smoke else 40,
+                                torch.zeros_like(seeds[:1]), xrayA, xrayB, steps=2 if smoke else 40,
                             ),
                         )
 

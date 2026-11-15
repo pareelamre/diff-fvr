@@ -1,10 +1,8 @@
 import os
-import glob
 from pathlib import Path
 from typing import Optional, Tuple
 import numpy as np
 import pydicom
-import SimpleITK as sitk
 from scipy.ndimage import affine_transform
 
 
@@ -31,85 +29,87 @@ def resample_isotropic_cube(volume_hu, spacing, target_res):
 
 
 def load_dicom_series(directory: str | Path) -> Tuple[np.ndarray, Tuple[float, float, float]]:
+    """Load one regular, parallel CT stack in its local voxel-axis frame.
+
+    Returns HU and Z,Y,X spacing. Patient origin/direction are not returned;
+    this API must not be used to transform patient-coordinate landmarks.
+    Nonuniform spacing, inter-slice shear and mixed series fail closed rather
+    than silently fabricating a regular physical grid. Reconstruct those data
+    with a geometry-aware converter before using this API.
     """
-    Load a DICOM series from a folder using SimpleITK with a fallback to pydicom.
-    Returns:
-        volume: 3D numpy array (Z, Y, X) of CT intensity in Hounsfield Units (HU).
-        spacing: (spacing_z, spacing_y, spacing_x) in mm.
-    """
-    directory = str(directory)
-    if not os.path.isdir(directory):
+    directory = Path(directory)
+    if not directory.is_dir():
         raise FileNotFoundError(f"Directory not found: {directory}")
-
-    # Try SimpleITK first
-    try:
-        reader = sitk.ImageSeriesReader()
-        series_ids = reader.GetGDCMSeriesIDs(directory)
-        if series_ids:
-            dicom_names = reader.GetGDCMSeriesFileNames(directory, series_ids[0])
-            reader.SetFileNames(dicom_names)
-            image = reader.Execute()
-            volume = sitk.GetArrayFromImage(image)  # Shape: (Z, Y, X)
-            spacing = image.GetSpacing()  # (dx, dy, dz)
-            spacing_zyx = (spacing[2], spacing[1], spacing[0])
-            return volume.astype(np.float32), spacing_zyx
-    except Exception as e:
-        print(f"[dicom_loader] SimpleITK series load failed ({e}), trying fallback...")
-
-    # Fallback: scan for *.dcm or numbered files with pydicom
-    files = glob.glob(os.path.join(directory, "*.dcm"))
-    if not files:
-        # Check files without extension
-        all_files = [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
-        files = [f for f in all_files if not f.endswith(('.rar', '.zip', '.txt', '.py', '.m'))]
-
-    if not files:
-        raise ValueError(f"No DICOM files found in {directory}")
-
     slices = []
-    for f in files:
-        try:
-            ds = pydicom.dcmread(f)
-            slices.append(ds)
-        except Exception:
+    paths = sorted(directory.iterdir())
+    if len(paths) > 10000:
+        raise ValueError('CT directory exceeds the 10000-file safety limit.')
+    for path in paths:
+        if not path.is_file():
             continue
-
-    if not slices:
-        raise ValueError(f"No readable DICOM slices found in {directory}")
-
-    # Sort slices by ImagePositionPatient[2] (Z) or SliceLocation or InstanceNumber
-    def get_slice_z(ds):
-        if hasattr(ds, "ImagePositionPatient") and len(ds.ImagePositionPatient) >= 3:
-            return float(ds.ImagePositionPatient[2])
-        if hasattr(ds, "SliceLocation"):
-            return float(ds.SliceLocation)
-        return float(getattr(ds, "InstanceNumber", 0))
-
-    slices.sort(key=get_slice_z)
-
-    # Pixel spacing
-    dz = 1.0
-    if len(slices) > 1 and hasattr(slices[0], "ImagePositionPatient") and hasattr(slices[1], "ImagePositionPatient"):
-        dz = abs(float(slices[1].ImagePositionPatient[2]) - float(slices[0].ImagePositionPatient[2]))
-    elif hasattr(slices[0], "SliceThickness"):
-        dz = float(slices[0].SliceThickness)
-
-    dx, dy = 1.0, 1.0
-    if hasattr(slices[0], "PixelSpacing"):
-        dy, dx = float(slices[0].PixelSpacing[0]), float(slices[0].PixelSpacing[1])
-
-    # Convert pixel arrays to Hounsfield Units
-    vol_list = []
-    for s in slices:
-        arr = s.pixel_array.astype(np.float32)
-        intercept = float(getattr(s, "RescaleIntercept", 0.0))
-        slope = float(getattr(s, "RescaleSlope", 1.0))
-        arr = arr * slope + intercept
-        vol_list.append(arr)
-
-    volume = np.stack(vol_list, axis=0)
-    return volume.astype(np.float32), (dz, dy, dx)
-
+        try:
+            ds = pydicom.dcmread(path, stop_before_pixels=True)
+        except pydicom.errors.InvalidDicomError:
+            continue
+        if getattr(ds, 'Modality', None) == 'CT':
+            if not 0 < int(ds.Rows) * int(ds.Columns) <= 4096**2:
+                raise ValueError('CT matrix exceeds the supported size.')
+            slices.append(ds)
+    if len(slices) < 2:
+        raise ValueError('At least two single-frame CT slices are required.')
+    if len({str(s.SeriesInstanceUID) for s in slices}) != 1:
+        raise ValueError('Mixed DICOM series; select one CT series explicitly.')
+    frames = {str(getattr(s, 'FrameOfReferenceUID', '')) for s in slices}
+    if len(frames) != 1 or '' in frames:
+        raise ValueError('Missing or mixed CT coordinate frame identifiers.')
+    if any(int(getattr(s, 'NumberOfFrames', 1)) != 1 for s in slices):
+        raise ValueError('Enhanced multi-frame CT requires a geometry-aware converter.')
+    if any(int(getattr(s, 'SamplesPerPixel', 0)) != 1 for s in slices):
+        raise ValueError('Only single-sample CT pixels are supported.')
+    if any(getattr(s, 'PhotometricInterpretation', '') != 'MONOCHROME2' for s in slices):
+        raise ValueError('Only MONOCHROME2 CT pixels are supported.')
+    try:
+        orientations = np.asarray([s.ImageOrientationPatient for s in slices], dtype=float)
+        positions = np.asarray([s.ImagePositionPatient for s in slices], dtype=float)
+        spacings = np.asarray([s.PixelSpacing for s in slices], dtype=float)
+    except AttributeError as exc:
+        raise ValueError('CT requires orientation, position and pixel spacing metadata.') from exc
+    if (orientations.shape != (len(slices), 6) or positions.shape != (len(slices), 3)
+            or spacings.shape != (len(slices), 2)
+            or not all(np.all(np.isfinite(a)) for a in (orientations, positions, spacings))
+            or np.any(spacings <= 0)):
+        raise ValueError('Invalid CT geometry metadata.')
+    row, col = orientations[0, :3], orientations[0, 3:]
+    if (not np.allclose(orientations, orientations[0], atol=1e-5, rtol=0)
+            or not np.allclose([np.linalg.norm(row), np.linalg.norm(col), row @ col], [1, 1, 0], atol=1e-4)):
+        raise ValueError('Changing or invalid CT slice orientation; reconstruct geometry first.')
+    if not np.allclose(spacings, spacings[0], atol=1e-5, rtol=0):
+        raise ValueError('Changing CT pixel spacing; reconstruct geometry first.')
+    normal = np.cross(row, col)
+    normal /= np.linalg.norm(normal)
+    order = np.argsort(positions @ normal)
+    positions = positions[order]
+    slices = [slices[i] for i in order]
+    delta = np.diff(positions, axis=0)
+    dz = delta @ normal
+    if np.any(dz <= 0) or not np.allclose(dz, dz[0], atol=1e-3, rtol=1e-4):
+        raise ValueError('Duplicate or nonuniform CT slice positions; reconstruct geometry first.')
+    if not np.allclose(delta, dz[:, None] * normal, atol=1e-3, rtol=0):
+        raise ValueError('CT gantry tilt/shear is unsupported; reconstruct geometry first.')
+    if len({(int(s.Rows), int(s.Columns)) for s in slices}) != 1:
+        raise ValueError('Changing CT matrix dimensions.')
+    if len(slices) * int(slices[0].Rows) * int(slices[0].Columns) > 512**3:
+        raise ValueError('CT exceeds the supported 512-cubed voxel budget.')
+    volume = np.empty((len(slices), int(slices[0].Rows), int(slices[0].Columns)), dtype=np.float32)
+    for i, header in enumerate(slices):
+        ds = pydicom.dcmread(header.filename)
+        arr = ds.pixel_array
+        if arr.shape != volume.shape[1:]:
+            raise ValueError('CT decoded pixel dimensions differ from metadata.')
+        volume[i] = arr.astype(np.float32) * float(getattr(ds, 'RescaleSlope', 1)) + float(getattr(ds, 'RescaleIntercept', 0))
+    if not np.all(np.isfinite(volume)):
+        raise ValueError('Non-finite CT intensity values.')
+    return volume, (float(dz[0]), float(spacings[0, 0]), float(spacings[0, 1]))
 
 def create_spine_phantom(size: int = 128) -> Tuple[np.ndarray, Tuple[float, float, float]]:
     """
