@@ -58,3 +58,18 @@ substitution or fallback manufactures a regular physical grid.
 
 Code audit: `aud_qN2vevJ1F1`; 33 source findings adjudicated in
 `JOURNAL_PROTOCOL_ADJUDICATION.md`. The audit did not execute GPU runs.
+
+After every worker has finished, validate the full 36-result batch before
+producing any paired table:
+
+```powershell
+python -m experiments.summarize_journal_replication outputs/journal-j34-r1 --output outputs/journal-j34-summary.json
+```
+
+The summary rejects missing whole specimens, duplicate trials, changed
+code/protocol/data, different initial poses and mixed hardware. It emits
+specimen effects and descriptive multiplicity-adjusted probabilities only
+after those checks. Its two synthetic regression tests cover missing whole
+subjects and mismatched/duplicate trial inputs. This follow-up implements
+the complete-roster remedy from the same protocol audit; it was locally
+verified after adjudication, not independently executed by that panel.
