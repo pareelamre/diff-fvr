@@ -21,6 +21,7 @@ import random
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from experiments.journal_protocol import PROTOCOL, protocol_hash
+from experiments.process_resources import run_profiled
 
 
 def digest(path):
@@ -34,7 +35,7 @@ def digest(path):
 def code_identity():
     files = sorted((ROOT/'src').rglob('*.py')) + sorted((ROOT/'experiments').glob('*.py'))
     packages = {}
-    for name in ('torch','diffdrr','nanodrr','scipy','triton','nibabel','pydicom'):
+    for name in ('torch','diffdrr','nanodrr','scipy','triton','nibabel','pydicom','psutil','nvidia-ml-py'):
         try:
             packages[name] = importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:
@@ -133,8 +134,12 @@ def worker(args, protocol):
             dB, RigidTransform(canonical.matrix[1:]), intrB, device, min_ncc=parameters['calibration_min_ncc'])
         del unused_bf16
         calibration = {'canonical_ncc': float(ncc), 'isocenter_mm': iso.detach().cpu().tolist(),
-                       'poses': protocol['canonical_poses'], 'cameraA':{k:v.detach().cpu().tolist() for k,v in nanoA.named_buffers()},
-                       'cameraB':{k:v.detach().cpu().tolist() for k,v in nanoB.named_buffers()}}
+                       'poses': protocol['canonical_poses']}
+        for label, camera in [('cameraA',nanoA),('cameraB',nanoB)]:
+            calibration[label] = {k: {'shape':list(v.shape), 'dtype':str(v.dtype),
+                'sha256':hashlib.sha256(v.detach().cpu().numpy().tobytes()).hexdigest(),
+                **({'values':v.detach().cpu().tolist()} if v.numel()<=64 else {})}
+                for k,v in camera.named_buffers()}
         # Explicit eager execution for both spatial arms; no unmatched graph replay.
     if method not in ('DiffDRR-SS-FP32','DiffDRR-C64-FP32','PoU-FVR+DiffDRR-K4-FP32'):
         del dA, dB
@@ -164,18 +169,20 @@ def worker(args, protocol):
                         nanoB(nano_subject,_diff_pose_to_nano_rt(dT@initialB,iso),n_samples=protocol['nano_samples'],backend=backend))
             def run():
                 steps = protocol['steps']
+                learning_rates=dict(lr_rot=parameters['lr_rotation'],lr_trans=parameters['lr_translation'])
+                polish_rates=dict(lr_rot=parameters['polish_lr_rotation'],lr_trans=parameters['polish_lr_translation'])
                 if method == 'DiffDRR-SS-FP32':
-                    return _optimize_multistart_microbatched(spatial,torch.zeros_like(seeds[:1]),xA,xB,steps['single'])
+                    return _optimize_multistart_microbatched(spatial,torch.zeros_like(seeds[:1]),xA,xB,steps['single'],**learning_rates)
                 if method == 'DiffDRR-C64-FP32':
-                    return _optimize_multistart_microbatched(spatial,seeds,xA,xB,steps['spatial'],micro_batch=protocol['diffdrr_microbatch'])
+                    return _optimize_multistart_microbatched(spatial,seeds,xA,xB,steps['spatial'],micro_batch=protocol['diffdrr_microbatch'],**learning_rates)
                 if method == 'nanodrr-C64-FP32':
-                    return _optimize_multistart_topk(nano,seeds,xA,xB,steps['spatial'])
+                    return _optimize_multistart_topk(nano,seeds,xA,xB,steps['spatial'],**learning_rates)
                 if method == 'PoU-FVR-G4x4x4-R64':
-                    return _optimize_multistart_topk(spectral,seeds,xA,xB,steps['pou'])
-                th, _ = _optimize_multistart_topk(spectral,seeds,xA,xB,steps['screen'],top_k=protocol['survivors'])
+                    return _optimize_multistart_topk(spectral,seeds,xA,xB,steps['pou'],**learning_rates)
+                th, _ = _optimize_multistart_topk(spectral,seeds,xA,xB,steps['screen'],top_k=protocol['survivors'],**learning_rates)
                 if 'nanodrr' in method:
-                    return _optimize_multistart_topk(nano,th,xA,xB,steps['polish'],lr_rot=.008,lr_trans=.8)
-                return _optimize_multistart_microbatched(spatial,th,xA,xB,steps['polish'],micro_batch=protocol['diffdrr_microbatch'],lr_rot=.008,lr_trans=.8)
+                    return _optimize_multistart_topk(nano,th,xA,xB,steps['polish'],**polish_rates)
+                return _optimize_multistart_microbatched(spatial,th,xA,xB,steps['polish'],micro_batch=protocol['diffdrr_microbatch'],**polish_rates)
             if warmup_s is None:
                 # Include lazy CUDA/Triton compilation in explicit measured warmup.
                 # One real optimization runs and is discarded before timed trials.
@@ -183,6 +190,7 @@ def worker(args, protocol):
                 warm_theta, warm_loss = run()
                 del warm_theta, warm_loss
                 sync(); warmup_s = time.perf_counter()-tw
+                warmup_memory = memory()
             resident = memory()
             if device.type=='cuda':
                 torch.cuda.reset_peak_memory_stats()
@@ -199,20 +207,23 @@ def worker(args, protocol):
                      init_mtre_mm=_compute_mtre(RigidTransform(initial),poseA,fids),
                      initial_delta=perturb.cpu().tolist(),candidate_sha256=hashlib.sha256(seeds.cpu().numpy().tobytes()).hexdigest(),
                      reg_time_s=elapsed,setup_s=setup_s,warmup_s=warmup_s,
-                     hypothetical_setup_warmup_one_reg_s=setup_s+warmup_s+elapsed,
+                     estimated_first_registration_s=setup_s+warmup_s,
+                     hypothetical_discarded_warmup_plus_one_reg_s=setup_s+warmup_s+elapsed,
                      resident=resident,memory=mem,final_edge_loss=float(loss[0]),
+                     estimated_pose_matrix=(_se3_exp(theta[:1])@initial).detach().cpu().tolist(),
                      protocol_sha256=protocol_hash(protocol),calibration=calibration)
             rows.append(row)
             with (args.output/f'{args.subject}_{method}.trials.jsonl').open('a',encoding='utf-8') as stream:
                 stream.write(json.dumps(row,allow_nan=False)+'\n'); stream.flush()
             print(json.dumps(row,allow_nan=False),flush=True)
     result=dict(protocol=protocol,protocol_sha256=protocol_hash(protocol),rows=rows,
-                setup_memory=setup_memory,python=platform.python_version(),torch=torch.__version__,
+                setup_memory=setup_memory,warmup_memory=warmup_memory,
+                python=platform.python_version(),torch=torch.__version__,
                 cuda=torch.version.cuda,gpu=torch.cuda.get_device_name() if device.type=='cuda' else 'CPU',
                 code_identity=identity,
                 source_sha256={str(p.relative_to(subj_dir)):digest(p) for p in source_files},
                 limitations=['development pairs','reference-derived relative camera geometry',
-                  'allocator counters exclude driver/context allocations; not device/process footprint'])
+                  'allocator counters exclude context; external resource sidecar records sampled process footprint'])
     path=args.output/f'{args.subject}_{method}.json'
     with path.open('x',encoding='utf-8') as stream:
         json.dump(result,stream,indent=2,allow_nan=False)
@@ -225,8 +236,11 @@ def main():
     p.add_argument('--device',default='cuda',choices=['cpu','cuda'])
     p.add_argument('--smoke',action='store_true')
     p.add_argument('--worker',choices=PROTOCOL['methods'])
+    p.add_argument('--resource-gated',action='store_true',help=argparse.SUPPRESS)
     p.add_argument('--subject',default='subject01',choices=[f'subject{i:02d}' for i in range(1,7)])
     args=p.parse_args()
+    if args.resource_gated and sys.stdin.buffer.read(1) != b'1':
+        raise RuntimeError('Resource monitor did not release worker gate')
     protocol=copy.deepcopy(PROTOCOL)
     if args.smoke:
         protocol.update(id='DFVR-J34-SMOKE',height=64,candidates=4,survivors=2,inits_per_tier=1)
@@ -248,17 +262,22 @@ def main():
         random.Random(protocol['seed']+index).shuffle(order)
         for method in order:
             cmd=[sys.executable,str(Path(__file__).resolve()),'--worker',method,'--subject',subject,
-                 '--data-root',str(args.data_root),'--output',str(args.output),'--device',args.device]
+                 '--data-root',str(args.data_root),'--output',str(args.output),'--device',args.device,
+                 '--resource-gated']
             if args.smoke:
                 cmd.append('--smoke')
             log=args.output/f'{subject}_{method}.log'
             with log.open('x',encoding='utf-8') as stream:
-                completed=subprocess.run(cmd,stdout=stream,stderr=subprocess.STDOUT,env=dict(os.environ,PYTHONUNBUFFERED='1'))
-            print(subject,method,'exit',completed.returncode,flush=True)
-            if completed.returncode:
+                profile=run_profiled(cmd,args.output/f'{subject}_{method}.resources.json',
+                     gpu_required=args.device=='cuda',interval_s=protocol['resources']['interval_s'],
+                     stdout=stream,env=dict(os.environ,PYTHONUNBUFFERED='1'),
+                     result_path=args.output/f'{subject}_{method}.json',protocol_sha256=protocol_hash(protocol),
+                     max_gap_s=protocol['resources']['max_gap_s'],timeout_s=protocol['resources']['worker_timeout_s'])
+            print(subject,method,'exit',profile['returncode'],'resources',profile['status'],flush=True)
+            if profile['returncode'] or profile['status']!='ok':
                 failures += 1
                 # Preserve failure; continue independent methods. Never create success rows.
-                (args.output/f'{subject}_{method}.failed.json').write_text(json.dumps(dict(subject=subject,method=method,status='failed',returncode=completed.returncode)),encoding='utf-8')
+                (args.output/f'{subject}_{method}.failed.json').write_text(json.dumps(dict(subject=subject,method=method,status='failed',returncode=profile['returncode'],resource_status=profile['status'])),encoding='utf-8')
             elif not (args.output/f'{subject}_{method}.json').is_file():
                 failures += 1
     if failures:

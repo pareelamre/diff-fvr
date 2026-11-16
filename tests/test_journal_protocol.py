@@ -24,7 +24,7 @@ class JournalProtocolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             out=Path(tmp)/'out'
             argv=['replicate','--smoke','--data-root',tmp,'--output',str(out)]
-            with patch.object(sys,'argv',argv), patch('experiments.exp34_journal_replication.code_identity',return_value={}), patch('experiments.exp34_journal_replication.subprocess.run',return_value=SimpleNamespace(returncode=1)):
+            with patch.object(sys,'argv',argv), patch('experiments.exp34_journal_replication.code_identity',return_value={}), patch('experiments.exp34_journal_replication.run_profiled',return_value={'returncode':1,'status':'ok'}):
                 with self.assertRaisesRegex(SystemExit,'6 workers failed'):
                     replication_main()
             self.assertEqual(len(list(out.glob('*.failed.json'))),6)

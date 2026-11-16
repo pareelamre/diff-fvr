@@ -9,7 +9,12 @@ import numpy as np
 
 
 PROTOCOL = {
-    'id': 'DFVR-J34-r1', 'height': 256, 'candidates': 64, 'survivors': 4,
+    'id': 'DFVR-J34-r2', 'height': 256, 'candidates': 64, 'survivors': 4,
+    'resources': {'required': True, 'interval_s': .02, 'schema':'DFVR-RESOURCE-1',
+                  'max_gap_s':.5, 'worker_timeout_s':14400,
+                  'scope':'external worker process tree RSS and NVML GPU bytes; setup through exit',
+                  'timing':'four warm trials plus separate setup and full optimization warmup',
+                  'success_threshold_mm':2., 'amortization_registrations':[1,10,100]},
     'steps': {'single': 40, 'spatial': 50, 'pou': 50, 'screen': 35, 'polish': 20},
     'nano_samples': 500, 'diffdrr_microbatch': 2, 'seed': 34000,
     'tiers': [['bounded', .10, 8., 10., 12.], ['wide', .20, 18., 16., 22.]],
@@ -23,8 +28,9 @@ PROTOCOL = {
         'padding':2, 'screen_precision':'bfloat16', 'spatial_precision':'float32',
         'backend':'eager torch / auto Triton for nanodrr', 'calibration_min_ncc':.975,
         'lr_rotation':.015, 'lr_translation':1.5, 'polish_lr_rotation':.008,
-        'polish_lr_translation':.8, 'adam_betas':[.8,.99], 'gradient_clamps':[.25,2.5],
-        'cosine_floor':.1, 'seed_formula':'seed+subject_index*100+tier_index*20+init_index; candidates add 3000',
+        'polish_lr_translation':.8,
+        'optimizer_fixed_constants':'source-hashed exp32/33: Adam betas=(.8,.99), clamps=(.25,2.5), cosine floor=.1',
+        'seed_formula':'seed+subject_index*100+tier_index*20+init_index; candidates add 3000',
         'tier_units':['name','initial_rotation_rad','initial_translation_mm','candidate_rotation_deg','candidate_translation_mm']},
     'analysis': {'primary':'per-specimen paired effects and failure counts; estimation first',
         'reference':'DiffDRR-C64-FP32', 'comparisons':'all five remaining arms vs reference, pooled tiers',
@@ -87,6 +93,7 @@ def paired_specimen_effect(rows, method, reference, *, expected_keys, bootstrap=
     p = float(np.mean(null >= abs(float(np.mean(effects))) - 1e-12))
     return {'n_specimens': len(effects), 'n_trials': len(selected),
             'median_paired_effect_mm': float(np.median(effects)),
+            'mean_specimen_effect_mm_tested':float(np.mean(effects)),
             'exploratory_cluster_percentile95_mm': np.quantile(draws, [.025, .975]).tolist(),
             'p_unadjusted': p, 'specimen_effects_mm': effects.tolist(),
             'test':'exact sign flip of mean specimen effects; assumes symmetry/exchangeability',

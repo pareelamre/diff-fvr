@@ -1,0 +1,39 @@
+{
+  "date_utc": "2026-11-16",
+  "monitor_source_sha256": "999bb9c71814b6e2b2d1ca1a96e41015e76c27b44c27be5cb87f575514bfb03a",
+  "source": "Observed existing Colab notebook output; exact module hash asserted in runtime",
+  "fixture": "4096x4096 CUDA random tensor, square mean backward, synchronized, 0.5s resident hold, result JSON; stdin gated",
+  "claim": "Measurement-path smoke only, not a renderer benchmark or performance-gain result",
+  "pid_preflight": {
+    "worker_pid": 31492,
+    "nvml_pid": 31492,
+    "gpu_bytes": 228589568,
+    "graphics_pids": []
+  },
+  "report": {
+    "schema": "DFVR-RESOURCE-1",
+    "status": "ok",
+    "returncode": 0,
+    "worker_wall_s": 2.981647538999823,
+    "requested_interval_s": 0.02,
+    "max_sample_gap_s": 0.037560776000646,
+    "max_allowed_gap_s": 0.5,
+    "samples": 148,
+    "peak_root_rss_bytes": 829571072,
+    "peak_tree_rss_bytes": 829571072,
+    "peak_process_gpu_bytes": 564133888,
+    "gpu_required": true,
+    "sampling_overhead_s": 0.2390870110002652,
+    "gpu_identity": {
+      "name": "NVIDIA L4",
+      "uuid": "GPU-3c64b5fa-a1e4-76cf-7109-d7c97ccb3ff1",
+      "driver": "580.82.07"
+    },
+    "observed_pids": [
+      34106
+    ],
+    "timeout_s": 120,
+    "protocol_sha256": "measurement-path-smoke",
+    "result_sha256": "5d82352ae4889073893cf7355c18ad9b55d23ee4bd6a405c78e95f68877dec5c"
+  }
+}
