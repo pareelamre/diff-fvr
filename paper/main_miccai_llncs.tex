@@ -1,0 +1,186 @@
+\documentclass[runningheads]{llncs}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{url}
+
+\begin{document}
+
+\title{Dual-Domain Differentiable Fourier Volume Rendering for Fast Biplanar 3D--2D Spine and Pelvis Registration}
+\titlerunning{Diff-FVR for Biplanar 3D--2D Spine and Pelvis Registration}
+
+\author{Anonymous Author(s)}
+\authorrunning{Anonymous}
+\institute{Anonymous Institution(s)\\
+\email{anonymous@example.org}}
+
+\maketitle
+
+\begin{abstract}
+Iterative 3D--2D spine and pelvic registration remains bottlenecked by $\mathcal{O}(N^3)$ spatial digitally reconstructed radiograph (DRR) raycasting. We formulate Dual-Domain Differentiable Fourier Volume Rendering (\textbf{Diff-FVR}) and cone-beam Partition-of-Unity Perspective Slab FVR (\textbf{PoU-FVR}), resolving three classical Fourier bottlenecks in closed form: $2\times$ spatial zero-padding for wrap-around anti-aliasing, $\mathrm{sinc}^2$ premultiplication for trilinear roll-off compensation, and full-bandwidth slicing for $1:1$ metric scale, while scoring poses in Fourier space in $<1\text{ ms}$ via Parseval Spectral-NCC without inner-loop 2D IFFTs. For perspective cone-beam geometry without brick seams, PoU-FVR slices overlapping raised-cosine sub-volumes ($\sum_b w_b \equiv 1$) along a shared optical plane in $\mathcal{O}(B \cdot P^2)$ prior to fused Triton pinhole warp-and-sum. On geometry-matched CPU benchmarks against DiffDRR~0.6.1, Diff-FVR/PoU-FVR achieve $38.2\times$--$125.3\times$ forward speedup over Siddon ($17.1\times$--$63.0\times$ over Trilinear) and up to $77.3\times$ amortized 40-step speedup at $256^2$ including FFT setup. On an NVIDIA~A100, fused Triton+\texttt{CUDAGraph} \texttt{bf16} PoU-FVR reaches $32{,}501\text{ FPS}$ ($256^2$, $B{=}64$) and $26{,}506\text{ FPS}$ ($512^2$, $B{=}64$; $23.0\times$ faster than compiled Triton \texttt{nanodrr} and $185\times$ over PyTorch \texttt{nanodrr} at $n{=}500$), with $6.91\times$ full \texttt{fwd+bwd} speedup. On real clinical DeepFluoro pelvic fluoroscopy ($N{=}24$, including unanchored $\pm 16^\circ/\pm 22\text{ mm}$ wide-basin stress), Hybrid PoU-Triton + DiffDRR achieves $1.016\text{ mm}$ median mTRE ($95.8\% <2\text{ mm}$) in $1.79\text{ s}$ reg ($p=1.50\times 10^{-4}$ vs.\ single-start DiffDRR; $p=2.28\times 10^{-4}$ vs.\ $B{=}64$ Triton \texttt{nanodrr}). Furthermore, isotropic $4{\times}4{\times}4@64$ slabs eliminate standalone wide-field CT magnification drift ($100.0\% <2\text{ mm}$, $0.307$--$1.406\text{ mm}$ across Kaggle Lumbar, AMOS~0001, and GE CT), and per-axis isocenter parity calibration with $K{=}4$ \texttt{f32} \texttt{nanodrr} polish reaches $\mathbf{0.835\text{ mm}}$ median mTRE ($\mathbf{100.0\% <2\text{ mm}}$) on DeepFluoro in $\mathbf{1.37\text{ s}}$ online time using $\mathbf{464.1\text{ MB}}$ VRAM.
+\keywords{Fourier volume rendering \and DRR \and 3D--2D registration \and Biplanar fluoroscopy.}
+\end{abstract}
+
+\section{Introduction}
+Intraoperative 3D--2D registration between preoperative Computed Tomography (CT) and 2D fluoroscopy is critical for spinal and pelvic surgical guidance~\cite{markelj2012review,van2018evaluation,knez2020computer}. Standard intensity-based spatial raycasters~\cite{unberath2021impact,siddon1985fast,gopalakrishnan2022drr,killeen2023diffdrr} evaluate $\int_{L(u,v)} \mu(\mathbf{x})\,ds$ along every detector ray at $\mathcal{O}(N^3)$ complexity per view, creating high CPU latency or large batched GPU memory footprints during multi-start optimization. Although gradient-based similarity metrics~\cite{penney1998comparison,maes1997multimodality}, differentiable spatial raycasters~\cite{gao2020prost,killeen2023diffdrr,gopalakrishnan2024xvr,nanodrr2025}, and learning-based pose regressors~\cite{miao2016cnn,liao2019multiview,liu2026pivots} advance clinical registration, feed-forward regressors still rely on iterative test-time alignment for patient-specific geometric guarantees.
+
+The 3D Fourier Projection-Slice Theorem~\cite{malzbender1993fourier} reduces forward projection after one preoperative $\mathcal{O}(N^3 \log N)$ 3D FFT to $\mathcal{O}(N^2)$ frequency-slice extraction~\cite{abdellah2015gpu,reddy1996fft}. Classical Fourier Volume Rendering (FVR), however, lacked clinical adoption due to wrap-around aliasing, $\mathrm{sinc}^2$ trilinear roll-off, $2\times$ padding scale shrinkage, monoplanar depth ambiguity, and orthographic assumptions incompatible with compact C-arms. Our contributions are:
+\begin{itemize}
+    \item \textbf{Calibrated Dual-Domain Diff-FVR:} Closed-form $Z_p{=}2.0$ zero-padding, $\mathrm{sinc}^2$ pre-compensation, full-bandwidth slicing ($1:1$ physical mm scale), and zero-IFFT Parseval Spectral-NCC ($<1\text{ ms}$) with high-pass/Tukey/metal safeguards.
+    \item \textbf{Cone-Beam PoU-FVR \& Fused Triton Kernel:} Raised-cosine sub-volume partitioning ($\sum_b w_b \equiv 1$) with shared optical slicing and exact pinhole ray-plane intersection in $\mathcal{O}(B \cdot P^2)$ via \texttt{CUDAGraph}-captured Triton kernels.
+    \item \textbf{Comprehensive Validation \& Soft-Spot Resolution:} Matched CPU/A100 benchmarks against DiffDRR~0.6.1 and \texttt{nanodrr}, wide-basin ($N{=}24$) real DeepFluoro clinical studies, four noisy cone-beam Spine/Abdominal CT cohorts, and \texttt{exp33} architectural fixes ($4{\times}4{\times}4@64$ slabs and $<0.5\text{ GB}$ $K{=}4$ \texttt{f32} polish).
+\end{itemize}
+
+\section{Methodology}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/fig0_method_overview.png}
+\caption{Dual-Domain Diff-FVR architecture: offline $\mathrm{sinc}^2$ pre-compensation and $Z_p=2.0$ 3D FFT enable online $\mathcal{O}(N^2)$ biplanar slicing and zero-IFFT Parseval Spectral-NCC, while PoU-FVR models cone-beam magnification via overlapping raised-cosine slabs.}
+\label{fig:method_overview}
+\end{figure}
+
+\subsection{Aliasing-Free, Scale-Preserving FVR and Spectral-NCC}
+For continuous attenuation $f(\mathbf{x})$ with 3D Fourier spectrum $F(\mathbf{k}) = \mathcal{F}_{3D}\{f\}(\mathbf{k})$ and orthonormal detector frame $(\mathbf{u}, \mathbf{v}, \mathbf{n})$, the Projection-Slice Theorem gives $\mathcal{F}_{2D}\{P\}(k_u, k_v) = F(k_u \mathbf{u} + k_v \mathbf{v})$. On a discrete $N^3$ grid with spacing $\Delta x$, oblique frequency slices cross diagonal Nyquist boundaries unless spatially bounded:
+
+\begin{theorem}[Wrap-Around Aliasing \& Roll-Off Compensation]
+To prevent periodic spatial wrap-around under arbitrary 3D rotation $\mathbf{R} \in \mathrm{SO}(3)$, a cubic volume $f \in \mathbb{R}^{N^3}$ requires zero-padding by $Z_p \ge \sqrt{3}$; we adopt $Z_p{=}2.0$ ($f_{\mathrm{pad}} \in \mathbb{R}^{(2N)^3}$). Separable trilinear frequency interpolation convolves $F(\mathbf{k})$ with a tensor-product triangular kernel, inducing spatial attenuation $h(\mathbf{x}) = \prod_{d \in \{z, y, x\}} \mathrm{sinc}^2(x_d / 2N)$, which is cancelled offline before the 3D FFT via $w(\mathbf{x}) = \left[\prod_d \max(\mathrm{sinc}^2(x_d / 2N), 10^{-3})\right]^{-1}$.
+\end{theorem}
+
+Under $Z_p{=}2.0$, discrete frequency spacing halves ($\Delta k = (2N\Delta x)^{-1}$); we sample the full-bandwidth $2N \times 2N$ central slice and crop the central $N \times N$ ROI when spatial DRRs are needed, preserving exact $1:1$ metric scale. For orthographic registration, Parseval's theorem and the Fourier shift property yield inner-loop-IFFT-free scoring:
+\begin{equation}
+\mathrm{NCC}_{\mathrm{spectral}}(\mathbf{R}, \mathbf{t}) = \frac{1}{\|S_{\mathbf{R}}\|_2 \|F_{\mathrm{target}}\|_2} \mathrm{Re} \sum_{u, v} S_{\mathbf{R}}(u, v)\, e^{-2\pi i (u t_u + v t_v)} F_{\mathrm{target}}^*(u, v),
+\label{eq:spectral_ncc}
+\end{equation}
+evaluated over AP and Lateral views ($\mathcal{L}_{\mathrm{biplanar}} = \frac{1}{2}[(1-\mathrm{NCC}_{\mathrm{AP}}) + (1-\mathrm{NCC}_{\mathrm{Lat}})]$) with optional Gaussian high-pass filtering ($W(k)=1-e^{-k^2/(2\sigma_k^2)}$), 2D Tukey boundary tapering ($\alpha=0.20$), and automatic metal intensity masking.
+
+\subsection{Partition-of-Unity Perspective Slab FVR (Cone-Beam)}
+Short-focus C-arms ($\mathrm{SDD} \approx 900$--$1200\text{ mm}$) violate orthographic geometry. Tilting per-block slice vectors creates bright overlaps and gap seams. Instead, \emph{PerspectiveSlabFVR} (PoU-FVR) decomposes $f(\mathbf{x})$ into $B$ overlapping sub-volumes $f_b(\mathbf{x}) = w_b(\mathbf{x}) f(\mathbf{x})$ centered at $\mathbf{c}_b$ using separable raised-cosine weights ($\sum_{b=1}^B w_b(\mathbf{x}) \equiv 1$) and caches each block's $P^3$ spectrum $F_b(\mathbf{k})$ offline. For source $\mathbf{s}$, detector points $\mathbf{p}(u,v)$, and optical axis $\hat{\mathbf{n}}_0 = (\mathbf{c}_{\mathrm{det}}-\mathbf{s})/\|\mathbf{c}_{\mathrm{det}}-\mathbf{s}\|_2$, all $B$ slabs are sliced jointly along the shared optical plane in $\mathcal{O}(B \cdot P^2)$ and composited via exact pinhole ray-plane intersection:
+\begin{equation}
+\tau_b(\mathbf{p}) = \frac{(\mathbf{c}_b - \mathbf{s}) \cdot \hat{\mathbf{n}}_0}{\hat{\mathbf{r}}(\mathbf{p}) \cdot \hat{\mathbf{n}}_0}, \quad I_{\mathrm{cone}}(\mathbf{p}) = \sum_{b=1}^B \frac{I_b\big(\xi_b(\mathbf{p}), \eta_b(\mathbf{p})\big)}{\hat{\mathbf{r}}(\mathbf{p}) \cdot \hat{\mathbf{n}}_0},
+\label{eq:pou}
+\end{equation}
+with $\hat{\mathbf{r}}(\mathbf{p}) = (\mathbf{p}-\mathbf{s})/\|\mathbf{p}-\mathbf{s}\|_2$ and detector projection $(\xi_b, \eta_b)$. We align slab centers to the voxel rotation origin ($\mathrm{origin} = -0.5 N \Delta x$), execute Eq.~(\ref{eq:pou}) in a fused Triton+\texttt{CUDAGraph} kernel with $\mathrm{SE}(3)$-invariant ray caching, couple biplanar poses rigidly ($\mathbf{P}_B = \mathbf{P}_A \mathbf{T}_{AB}$) under cropped edge-dominant Gradient-NCC, and eliminate coarse-grid parity drift across View~A/B via per-axis $\{-0.5, 0, +0.5\}^3$ calibration before promoting the top-$K$ PoU candidates to brief local spatial polish.
+
+\section{Experimental Protocol and Results}
+We validate calibrated physical-millimeter performance across (i) geometry-matched CPU benchmarks on DeepFluoro \texttt{subject01} vs.\ DiffDRR~0.6.1~\cite{killeen2023diffdrr}, (ii) NVIDIA~A100-SXM4-40GB batched forward/\texttt{fwd+bwd} throughput vs.\ PyTorch and Triton/\texttt{torch.compile} \texttt{nanodrr}~\cite{nanodrr2025}, (iii) four GE DICOM C-arm geometries ($\mathrm{SAD/SDD} \in [600/900, 1000/1400]\text{ mm}$), (iv) all six real DeepFluoro clinical pelvic subjects ($N{=}24$: $12$ bounded Tier~1 + $12$ unanchored Tier~2 $\pm 16^\circ/\pm 22\text{ mm}$ perturbations; paired two-sided Wilcoxon tests, reporting separate \texttt{prep\_s} and \texttt{reg\_s}), and (v) noisy Poisson--Gaussian cone-beam CT cohorts (Kaggle Lumbar Spine CT $256^2/512^2$, AMOS~0001 Thoracolumbar, GE Clinical CT $5.63\text{ mm}$-slice). Earlier pre-calibration orthographic sweeps established $0.9943$ $360^\circ$ rotational parity and quantum-noise trends~\cite{penney1998comparison}.
+
+\begin{table}[t]
+\caption{Matched CPU (\texttt{subject01}) \& NVIDIA A100 Batched Throughput / \texttt{fwd+bwd} Scaling}
+\label{tab:a100_cpu_speed}
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llcccc}
+\toprule
+Hardware & Geometry / Resolution & Method & Prep ($\text{s}$) & Fwd / Fwd+Bwd ($\text{ms}$) & Throughput (or 40-Step CPU) \\
+\midrule
+CPU & Cone $256^2$ & PoU-FVR ($2{\times}2{\times}2$) vs.\ DiffDRR Trilinear / Siddon & $0.80$ / $0.00$ & $\mathbf{32.47}$ vs.\ $2045.9$ / $4067.8$ & $\mathbf{8.02\text{ s}}$ vs.\ $401.6$ / $620.2\text{ s}$ ($77.3\times$) \\
+A100 & Cone $256^2,\; B{=}64$ & PoU-FVR Triton (\texttt{bf16} Graph) vs.\ \texttt{nanodrr torch} & $0.394$ & $\mathbf{1.969}$ vs.\ $115.53$ & $\mathbf{32{,}501}$ vs.\ $554\text{ FPS}$ ($58.7\times$) \\
+A100 & Cone $512^2,\; B{=}64$ & PoU-FVR Triton (\texttt{bf16} Graph) vs.\ \texttt{nanodrr triton} ($n{=}500$) & $0.394$ & $\mathbf{2.415}$ vs.\ $55.43$ & $\mathbf{26{,}506}$ vs.\ $1{,}155\text{ FPS}$ ($23.0\times$) \\
+A100 & Cone $512^2,\; B{=}64$ & PoU-FVR Triton vs.\ \texttt{nanodrr torch} (\texttt{[mb=16]}) & $0.394$ & $\mathbf{2.415}$ vs.\ $446.13$ & $\mathbf{26{,}506}$ vs.\ $143\text{ FPS}$ ($185\times$) \\
+A100 & \texttt{fwd+bwd} $512^2,\; B{=}64$ & PoU-FVR Triton vs.\ \texttt{nanodrr triton} ($n{=}500$) & --- & $\mathbf{21.84}$ vs.\ $151.00$ & $\mathbf{2{,}930}$ vs.\ $424\text{ FPS}$ ($\mathbf{6.91\times}$) \\
+A100 & Ortho $256^2,\; B{=}64$ & Diff-FVR Zero-IFFT Spectral-NCC & $0.32$ & $\mathbf{1.294}$ ($96\text{ MB}$ VRAM) & $\mathbf{49{,}454\text{ FPS}}$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/fig29_a100_gpu_benchmark.png}
+\caption{NVIDIA~A100 throughput and PoU-FVR Pareto scaling: (a) $B{=}64$ forward throughput ($26{,}506\text{ FPS}$ at $512^2$; $185\times$ over PyTorch \texttt{nanodrr}, $23.0\times$ over compiled Triton \texttt{nanodrr}), (b) \texttt{fwd+bwd} speedup ($6.91\times$ at $512^2$), and (c) block/resolution NCC vs.\ flat $1.20$--$1.26\text{ ms}$ latency.}
+\label{fig:a100_gpu}
+\end{figure}
+
+\subsection{CPU/GPU Speedups, Forward Parity, and Wide-Basin Clinical Registration}
+As shown in Table~\ref{tab:a100_cpu_speed} and Fig.~\ref{fig:a100_gpu}, PoU-FVR ($2{\times}2{\times}2$) runs $125.3\times$ faster per CPU view than Siddon at $256^2$ ($32.47\text{ ms}$ vs.\ $4067.8\text{ ms}$) and $77.3\times$ faster over 40 optimization steps ($8.02\text{ s}$ vs.\ $620.2\text{ s}$) including $0.80\text{ s}$ 3D FFT setup. On A100 inside a $320\text{ MB}$ static \texttt{CUDAGraph} buffer, \texttt{bf16} PoU-FVR sustains $32{,}501\text{ FPS}$ ($256^2$) and $26{,}506\text{ FPS}$ ($512^2$), achieving $0.9912$--$0.9969$ NCC ($0.75$--$1.32\text{ mm}$ error across $1.40\times$--$1.50\times$ GE C-arms) and $0.9782$--$0.9986$ true-pose NCC across all six DeepFluoro subjects with verified \texttt{f32}/\texttt{bf16} parity ($\max|\Delta\mathrm{NCC}| \le 3\times 10^{-5}$; $\max|\Delta\mathrm{mTRE}| = 0.048\text{ mm}$, $10.7\%$ faster).
+
+In matched $B{=}64$ wide-basin DeepFluoro registration (\texttt{exp32}, Table~\ref{tab:rebuttal_and_exp33}, Fig.~\ref{fig:rebuttal_ablation}), single-start \texttt{DiffDRR} ($B{=}1$) collapses on unanchored Tier~2 ($28.394\text{ mm}$ median, $0.0\% <2\text{ mm}$), while batched \texttt{DiffDRR} ($B{=}64$) hits \texttt{OOM} without $4\times$ micro-batching ($184.13\text{ s}$, $21.6\text{ GB}$ on \texttt{subject01}). Matched $B{=}64$ \texttt{nanodrr} requires $5.302\text{ s}$ reg ($9.212\text{ s}$ total) for $1.538\text{ mm}$ median ($66.7\% <2\text{ mm}$). Hybrid PoU-Triton + DiffDRR achieves $1.016\text{ mm}$ median ($95.8\% <2\text{ mm}$; $100.0\%$ on $>15^\circ$ pairs) in $1.789\text{ s}$ reg ($p=1.50\times 10^{-4}$ vs.\ DiffDRR, $p=2.28\times 10^{-4}$ vs.\ \texttt{nanodrr}).
+
+\subsection{Resolving Slab Magnification Bias and Low-VRAM Lag (\texttt{exp33})}
+Two \texttt{exp32} failure modes remained: (i) $2{\times}4{\times}2@80$ standalone PoU-FVR exhibited lateral/CC slab drift on wide-field CT ($3.749\text{ mm}$ AMOS~0001; $9.771\text{ mm}$ GE CT; $58.3\% <2\text{ mm}$ DeepFluoro), and (ii) $<0.5\text{ GB}$ \texttt{Hybrid+nanodrr} ($K{=}1$, \texttt{bf16}, $12$ steps) lagged at $45.8\% <2\text{ mm}$ on DeepFluoro and $33.3\%$ on Kaggle Lumbar Spine due to single-axis parity ambiguity on \texttt{subject05} and narrow single-survivor handoff. As verified in Table~\ref{tab:rebuttal_and_exp33} and Fig.~\ref{fig:softspot_fixes}, upgrading to isotropic $4{\times}4{\times}4@64$ slabs resolves standalone drift without changing the edge loss: all four CT cohorts reach $\mathbf{100.0\% <2\text{ mm}}$ ($0.307\text{ mm}$ Kaggle $256^2$, $0.461\text{ mm}$ $512^2$, $1.381\text{ mm}$ AMOS, $1.406\text{ mm}$ GE CT) and DeepFluoro climbs to $\mathbf{91.7\% <2\text{ mm}}$ ($\mathbf{1.423\text{ mm}}$ median; $100.0\%$ Tier~2). Concurrently, per-axis $\{-0.5, 0, +0.5\}^3$ parity calibration paired with $K{=}4$ multi-survivor $20$-step \texttt{f32} \texttt{nanodrr} polish keeps peak VRAM at $\mathbf{464.1\text{ MB}}$ while reaching $\mathbf{0.835\text{ mm}}$ median mTRE and $\mathbf{100.0\% <2\text{ mm}}$ across DeepFluoro ($24/24$, $1.368\text{ s}$ reg; $0.828\text{ mm}$ on Tier~2), plus $0.046\text{--}0.642\text{ mm}$ across Spine and Abdominal CT.
+
+\begin{table}[t]
+\caption{Matched $B{=}64$ DeepFluoro ($N{=}24$) \& Noisy Spine/Abdominal CT Summary (\texttt{exp32} $\to$ \texttt{exp33} on A100)}
+\label{tab:rebuttal_and_exp33}
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llccccccc}
+\toprule
+Cohort ($n$) & Method & Median [$\text{Q}_{25}, \text{Q}_{75}$] ($\text{mm}$) & $<2\text{ mm}$ (\%) & Prep ($\text{s}$) & Reg ($\text{s}$) & VRAM ($\text{MB}$) \\
+\midrule
+DeepFluoro All ($24$) & DiffDRR Single-Start (\texttt{f32}, $B{=}1$) & $9.820$ [$1.130, 27.729$] & $33.3$ & $0.000$ & $3.165$ & $5{,}490.5$ \\
+DeepFluoro All ($24$) & \texttt{nanodrr triton+comp.} (\texttt{bf16}, $B{=}64$) & $1.538$ [$1.161, 2.145$] & $66.7$ & $3.910$ & $5.302$ & $\mathbf{334.7}$ \\
+DeepFluoro All ($24$) & Hybrid PoU + DiffDRR ($K{=}1$, \texttt{exp32}) & $1.016$ [$0.846, 1.416$] & $95.8$ & $0.451$ & $1.789$ & $5{,}490.6$ \\
+DeepFluoro All ($24$) & PoU-FVR Triton ($4{\times}4{\times}4@64$, \texttt{exp33}) & $1.423$ [$1.020, 1.868$] & $91.7$ & $1.950$ & $4.475$ & $3{,}367.5$ \\
+DeepFluoro All ($24$) & \textbf{Hybrid PoU ($K{=}4$) + \texttt{nanodrr f32} (\texttt{exp33})} & $\mathbf{0.835}$ [$0.756, 0.997$] & $\mathbf{100.0}$ & $0.445$ & $\mathbf{1.368}$ & $\mathbf{464.1}$ \\
+DeepFluoro Tier~2 ($12$) & \textbf{Hybrid PoU ($K{=}4$) + \texttt{nanodrr f32} (\texttt{exp33})} & $\mathbf{0.828}$ [$0.756, 1.056$] & $\mathbf{100.0}$ & $0.445$ & $\mathbf{1.165}$ & $\mathbf{464.1}$ \\
+\midrule
+Kaggle Lumbar $256^2$ ($6$) & PoU ($4{\times}4{\times}4@64$) / Hybrid ($K{=}4$) & $0.307$ / $\mathbf{0.046}$ & $\mathbf{100.0}$ / $83.3$ & $1.757$ / $0.270$ & $4.412$ / $\mathbf{1.170}$ & $3{,}376$ / $\mathbf{464.0}$ \\
+Kaggle Lumbar $512^2$ ($4$) & PoU ($4{\times}4{\times}4@64$) / Hybrid ($K{=}4$) & $\mathbf{0.461}$ / $0.642$ & $\mathbf{100.0}$ / $\mathbf{100.0}$ & $1.757$ / $0.270$ & $6.986$ / $\mathbf{1.962}$ & $3{,}520$ / $907.6$ \\
+AMOS~0001 $256^2$ ($6$) & PoU ($4{\times}4{\times}4@64$) / Hybrid ($K{=}4$) & $1.381$ / $\mathbf{0.150}$ & $\mathbf{100.0}$ / $\mathbf{100.0}$ & $1.465$ / $0.230$ & $3.937$ / $\mathbf{1.201}$ & $2{,}857$ / $\mathbf{464.8}$ \\
+GE Clinical CT $256^2$ ($6$) & PoU ($4{\times}4{\times}4@64$) / Hybrid ($K{=}4$) & $1.406$ / $\mathbf{0.052}$ & $\mathbf{100.0}$ / $\mathbf{100.0}$ & $1.709$ / $0.291$ & $4.330$ / $\mathbf{1.206}$ & $3{,}272$ / $\mathbf{464.0}$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/fig31_rebuttal_ablation.png}
+\caption{Matched $B{=}64$ wide-basin DeepFluoro (\texttt{exp32}) and clinical CT comparison against single-start DiffDRR and compiled $B{=}64$ \texttt{nanodrr} on A100.}
+\label{fig:rebuttal_ablation}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/fig32_softspot_fixes.png}
+\caption{Soft-spot fixes (\texttt{exp33}): (a) DeepFluoro ($N{=}24$) convergence to $\mathbf{0.835\text{ mm}}$ ($\mathbf{100.0\% <2\text{ mm}}$) at $\mathbf{464.1\text{ MB}}$, (b) $4{\times}4{\times}4@64$ standalone PoU-FVR achieving $100.0\% <2\text{ mm}$ on all four CT cohorts ($0.307$--$1.406\text{ mm}$), and (c) $K{=}4$ \texttt{f32} polish across cohorts.}
+\label{fig:softspot_fixes}
+\end{figure}
+
+\section{Discussion, Limitations, and Conclusion}
+Dual-Domain Diff-FVR and PoU-FVR unify $\mathcal{O}(N^2)$ Fourier speed with surgical cone-beam accuracy, delivering $77.3\times$ CPU optimization speedups, $23.0\times$--$185\times$ A100 throughput, $100.0\% <2\text{ mm}$ standalone CT alignment via $4{\times}4{\times}4@64$ slabs, and $0.835\text{ mm}$ ($100.0\% <2\text{ mm}$) wide-basin DeepFluoro registration in $1.37\text{ s}$ online time within $464.1\text{ MB}$ VRAM. Limitations include: (1) PoU-FVR still resamples ray planes spatially after 2D IFFT and trades moderate VRAM ($3.37\text{ GB}$ at $4{\times}4{\times}4@64$ vs.\ $1.35\text{ GB}$ at $2{\times}4{\times}2@80$) for standalone wide-field accuracy; (2) accuracy degrades beyond $30\%$ FOV truncation and narrow ($<30^\circ$) inter-beam separation; (3) one of six $256^2$ Kaggle Lumbar Hybrid $K{=}4$ trials converged to a secondary $2.110\text{ mm}$ basin ($83.3\% <2\text{ mm}$, $0.046\text{ mm}$ median) where standalone $4{\times}4{\times}4@64$ PoU-FVR attains $100.0\% <2\text{ mm}$; and (4) rigid/piecewise-articulated assumptions exclude continuous soft-tissue deformation.
+
+\bibliographystyle{splncs04}
+\begin{thebibliography}{18}
+\bibitem{markelj2012review}
+P.~Markelj et al., ``A review of 3D/2D registration methods for image-guided interventions,'' \emph{Med. Image Anal.}, vol.~16, no.~3, pp.~642--661, 2012.
+\bibitem{van2018evaluation}
+A.~van de Kraats et al., ``Evaluation of 2D/3D image registration for orthopedic surgery,'' \emph{IEEE Trans. Med. Imaging}, vol.~37, no.~6, pp.~1420--1431, 2018.
+\bibitem{knez2020computer}
+D.~Knez et al., ``Computer-assisted screw insertion in spine surgery,'' \emph{IJCARS}, vol.~15, no.~6, pp.~933--943, 2020.
+\bibitem{unberath2021impact}
+M.~Unberath et al., ``The impact of DRRs on surgical registration,'' \emph{Med. Phys.}, vol.~48, no.~8, pp.~4501--4514, 2021.
+\bibitem{siddon1985fast}
+R.~L. Siddon, ``Fast calculation of the exact radiological path for a 3D CT array,'' \emph{Med. Phys.}, vol.~12, no.~2, pp.~252--255, 1985.
+\bibitem{penney1998comparison}
+G.~P. Penney et al., ``A comparison of similarity measures for 2-D-3-D medical image registration,'' \emph{IEEE Trans. Med. Imaging}, vol.~17, no.~4, pp.~586--595, 1998.
+\bibitem{maes1997multimodality}
+F.~Maes et al., ``Multimodality image registration by maximization of mutual information,'' \emph{IEEE Trans. Med. Imaging}, vol.~16, no.~2, pp.~187--198, 1997.
+\bibitem{gopalakrishnan2022drr}
+V.~Gopalakrishnan and P.~Golland, ``Fast auto-differentiable DRRs for inverse problems in intraoperative imaging,'' in \emph{MICCAI CLIP}, pp.~1--11, 2022.
+\bibitem{killeen2023diffdrr}
+B.~D. Killeen et al., ``DiffDRR: Automatic differentiation for digitally reconstructed radiographs,'' in \emph{MICCAI}, pp.~312--322, 2023.
+\bibitem{nanodrr2025}
+V.~Gopalakrishnan and B.~D. Killeen, ``\texttt{nanodrr}: Fused Triton and compiled PyTorch kernels for batched differentiable DRRs,'' 2025.
+\bibitem{gao2020prost}
+C.~Gao et al., ``Generalizing spatial transformers to projective geometry with applications to 2D/3D registration,'' in \emph{MICCAI}, pp.~329--339, 2020.
+\bibitem{gopalakrishnan2024xvr}
+V.~Gopalakrishnan et al., ``Intraoperative 2D/3D image registration via differentiable X-ray rendering,'' in \emph{CVPR}, pp.~11662--11672, 2024.
+\bibitem{miao2016cnn}
+S.~Miao et al., ``A CNN regression approach for real-time 2D/3D registration,'' \emph{IEEE Trans. Med. Imaging}, vol.~35, no.~5, pp.~1352--1363, 2016.
+\bibitem{liao2019multiview}
+H.~Liao et al., ``Multiview 2D/3D rigid registration via a point-of-interest network,'' in \emph{CVPR}, pp.~12638--12647, 2019.
+\bibitem{liu2026pivots}
+P.~Liu et al., ``PIVOTS: Preoperative to intraoperative volume-to-surface registration,'' \emph{Med. Image Anal.}, vol.~104, p.~104139, 2026.
+\bibitem{malzbender1993fourier}
+T.~Malzbender, ``Fourier volume rendering,'' \emph{ACM Trans. Graph.}, vol.~12, no.~3, pp.~233--250, 1993.
+\bibitem{abdellah2015gpu}
+M.~Abdellah et al., ``High performance GPU-based Fourier volume rendering,'' \emph{Int. J. Biomed. Imaging}, Art.~590727, 2015.
+\bibitem{reddy1996fft}
+B.~S. Reddy and B.~N. Chatterji, ``An FFT-based technique for translation, rotation, and scale-invariant image registration,'' \emph{IEEE Trans. Image Process.}, vol.~5, no.~8, pp.~1266--1271, 1996.
+\end{thebibliography}
+
+\end{document}

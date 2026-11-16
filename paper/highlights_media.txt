@@ -1,0 +1,5 @@
+- Dual-Domain Diff-FVR & PoU-FVR achieve 38.2x-125.3x matched CPU speedup vs. DiffDRR.
+- Fused Triton+CUDAGraph bf16 PoU-FVR reaches 26,506 FPS at 512^2 (23x over nanodrr).
+- Isotropic 4x4x4@64 slabs give 100% <2 mm standalone alignment across 4 CT cohorts.
+- K=4 f32 Hybrid+nanodrr reaches 0.835 mm (100% <2 mm) on DeepFluoro in 464.1 MB VRAM.
+- Validates wide-basin multi-start registration across 6 real patients and 4 CT cohorts.
