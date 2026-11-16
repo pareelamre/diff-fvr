@@ -629,8 +629,8 @@ def fourier_slice_3d_torch(
 
     work_vol = vol_ri
     work_grid = grid_5d
-    # CPU grid_sample only reliably supports float32/float64
-    if not vol_ri.is_cuda and vol_ri.dtype in (torch.float16, torch.bfloat16):
+    # Keep coordinate precision in the Torch fallback on both CPU and CUDA.
+    if vol_ri.dtype in (torch.float16, torch.bfloat16):
         work_vol = vol_ri.float()
     if work_grid.dtype != work_vol.dtype:
         work_grid = work_grid.to(dtype=work_vol.dtype)

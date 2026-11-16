@@ -85,7 +85,7 @@ class TestTorchDiffFVREngine(unittest.TestCase):
         self.assertLess(final_loss, initial_loss, "Adam optimization should decrease Spectral-NCC loss")
 
     def test_zero_ifft_forward_spectral_ncc(self):
-        """Zero-IFFT forward_spectral_ncc agrees with Parseval NCC and drives 6-DoF optimization."""
+        """The zero-IFFT objective descends from a perturbed single-view pose."""
         true_pose = torch.tensor([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], dtype=torch.float32)
         with torch.no_grad():
             target_drr = self.engine(true_pose, view="ap", out_res=64)
