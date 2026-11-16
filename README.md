@@ -5,13 +5,19 @@
 
 **Dual-Domain Differentiable Fourier Volume Rendering (`Diff-FVR` & perspective `PoU-FVR`)** for high-speed digitally reconstructed radiographs (DRRs) and biplanar 3D–2D spine/pelvis registration on CPU and GPU.
 
-Instead of stepping `O(N)` points per ray (`O(N^3)` per projection), Diff-FVR precomputes a padded 3D FFT once and evaluates candidate views via `O(N^2)` Fourier slicing—pairing Parseval Zero-IFFT Spectral-NCC (parallel beam) with Partition-of-Unity Perspective Slab FVR (`PoU-FVR`) and fused Triton/`CUDAGraph` kernels for true cone-beam C-arm geometry.
+Instead of stepping `O(N)` points per ray (`O(N^3)` per projection), Diff-FVR precomputes a padded 3D FFT once and evaluates candidate views via `O(N^2)` Fourier slicing—pairing Parseval Zero-IFFT Spectral-NCC (parallel beam) with Partition-of-Unity Perspective Slab FVR (`PoU-FVR`) and fused Triton/`CUDAGraph` kernels for approximate divergent C-arm projection.
 
-> **Research software.** Clinical accuracy and suitability for surgical navigation have not been established beyond retrospective phantom and cadaveric benchmark datasets.
+> **Research software.** Clinical accuracy and suitability for surgical navigation have not been established. Current evidence consists of simulations and cadaveric development experiments.
 
-Author: Pareel Amre · TU Dresden · `pareel.amre@gmail.com` · License: [MIT](https://github.com/pareelamre/diff-fvr/blob/master/LICENSE)
+Author: Pareel Amre · MSc. Computational Modeling and Simulation, TU Dresden (educational credential; no current institutional affiliation) · `pareel.amre@gmail.com` · License: [MIT](https://github.com/pareelamre/diff-fvr/blob/master/LICENSE)
 
 ---
+
+## Journal evidence status
+
+The exp29–33 tables below preserve **historical development outputs**. DeepFluoro contains six cadaveric specimens; repeated initializations are not independent patients. Earlier comparisons include inconsistent baseline initialization and reference-pose-dependent convention calibration. Reported memory increments exclude resident allocations, and preparation/timing boundaries differ between experiments. These tables do not establish corrected superiority, clinical validation or a total device-memory requirement.
+
+The matched replication protocol and complete-batch analysis are documented in [JOURNAL_REPLICATION.md](docs/JOURNAL_REPLICATION.md). The attempted full L4 run was interrupted before outputs were preserved; no complete corrected result is currently claimed. Distinguish the direct parallel **Diff-FVR-Spectral** path from perspective **PoU-FVR** and its separately credited spatial-refinement hybrids.
 
 ## Benchmarks vs. Spatial DRR Renderers (`DiffDRR` & `nanodrr`)
 
