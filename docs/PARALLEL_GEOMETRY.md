@@ -108,8 +108,18 @@ The corrected parallel engine defaults to `use_triton=False`. CPU checks compare
 its actual physical sampling bins, anisotropic axes and guard center with the
 explicit eight-neighbor stencil for values and gradients, including samples
 outside the guard. They do not execute GPU kernels. Explicit Triton opt-in
-remains available for experimental verification; corrected CUDA/Triton forward
-and backward parity must be run before claiming that path is validated.
-Performance measurement is a separate subsequent task. The acquired-image full-memory run is frozen at its own
-source revision and uses the distinct perspective projector; do not update that
-checkout or run a competing CUDA job during its exclusive-GPU measurements.
+remains available explicitly. A17November2026 L4 qualification now compares
+corrected CUDA Torch/Triton forward images and all six pose gradients on a25-cube
+asymmetric anisotropic phantom, including oblique views and fractional shifts.
+Float32 relative-L2 discrepancies are4.49e-7(image) and1.88e-7(gradient);
+float16 gives1.87e-4/4.28e-5 andbfloat16 gives1.45e-3/1.15e-4.
+All declared fixture tolerances pass. This is scoped numerical qualification,
+not broad size/shape performance certification; the conservative Torch default
+is retained. Six preselected VerSe CTs additionally pass the independent spatial
+parallel-target registration study using float32 Torch. Its limitations and
+exact protocols/source hashes are in outputs/journal_j34.
+
+The separate acquired-image36-worker resource batch is complete and uses the
+distinct perspective projector at its own frozen source revision. It must not
+be conflated with corrected parallel objective timing. See
+docs/JOURNAL_SESSION_ANALYSIS.md for explicit device-stratified analysis.

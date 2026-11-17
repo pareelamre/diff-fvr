@@ -12,13 +12,17 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from experiments.journal_protocol import protocol_hash, paired_specimen_effect, holm_adjust
 
 
-def read_complete_batch(root, subjects=None):
+def read_complete_batch(root, subjects=None, *, resource_policy='single-device'):
+    if resource_policy not in ('single-device','stratified'):
+        raise ValueError('Unknown resource analysis policy')
     subjects = subjects or [f'subject{i:02d}' for i in range(1,7)]
     root=Path(root)
     if list(root.glob('*.failed.json')):
         raise ValueError('Failed workers present; report failures before paired inference')
     manifest=json.loads((root/'protocol.json').read_text(encoding='utf-8'))
     protocol=manifest['protocol']
+    if resource_policy=='stratified' and not protocol.get('resources',{}).get('required'):
+        raise ValueError('Stratified analysis requires bound resource profiles')
     if manifest['sha256'] != protocol_hash(protocol):
         raise ValueError('Invalid protocol digest')
     rows=[]; gpu=set(); gpu_ids=set(); shared={}; data_hashes={}
@@ -83,7 +87,7 @@ def read_complete_batch(root, subjects=None):
                 rows.append(row)
     if len(gpu)!=1:
         raise ValueError('Mixed GPU models; split resource analyses by hardware')
-    if len(gpu_ids)>1:
+    if len(gpu_ids)>1 and resource_policy=='single-device':
         raise ValueError('Mixed GPU devices; split resource analyses by hardware')
     return manifest,rows,next(iter(gpu))
 
@@ -115,7 +119,7 @@ def summarize(root, subjects=None):
                         max_sample_gap_s=max(p['max_sample_gap_s'] for p in profiles.values()),
                         mean_sampling_overhead_s=statistics.mean(p['sampling_overhead_s'] for p in profiles.values()),
                         estimated_amortized_s_per_registration={str(n):
-                            (item['mean_setup_s']+item['mean_warmup_s']+(n-1)*item['mean_reg_s'])/n
+                            (item['mean_setup_s']+item['mean_warmup_s']+n*item['mean_reg_s'])/n
                             for n in protocol['resources']['amortization_registrations']})
             phase_values=[v for r in selected for v in r['worker_allocator_phases'].values()]+[r['memory'] for r in selected]
             item['max_worker_allocator_allocated_MiB']=max(v['peak_allocated_MiB'] for v in phase_values)

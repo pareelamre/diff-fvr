@@ -127,7 +127,8 @@ class ResourceTests(unittest.TestCase):
     def test_gate_covers_startup_and_preserves_nonzero_exit(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)/'resources.json'
-            code = "import sys,time; assert sys.stdin.buffer.read(1)==b'1'; a=bytearray(8*1024*1024); a[::4096]=b'x'*len(a[::4096]); time.sleep(.12); sys.exit(7)"
+            # Outlive one allowed .5s sampling gap, including on a busy Windows host.
+            code = "import sys,time; assert sys.stdin.buffer.read(1)==b'1'; a=bytearray(8*1024*1024); a[::4096]=b'x'*len(a[::4096]); time.sleep(.6); sys.exit(7)"
             report = run_profiled([sys.executable, '-c', code], out,
                                   gpu_required=False, interval_s=.01,
                                   stdout=subprocess.DEVNULL)
@@ -136,7 +137,7 @@ class ResourceTests(unittest.TestCase):
             self.assertGreater(report['peak_root_rss_bytes'], 0)
             self.assertGreater(report['peak_tree_rss_bytes'], 8*1024*1024)
             self.assertGreater(report['samples'], 2)
-            self.assertGreaterEqual(report['worker_wall_s'], .12)
+            self.assertGreaterEqual(report['worker_wall_s'], .6)
             self.assertEqual(json.loads(out.read_text()), report)
 
 

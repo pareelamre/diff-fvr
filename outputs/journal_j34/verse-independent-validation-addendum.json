@@ -1,0 +1,148 @@
+{
+  "report_sha256": "0dedd6a3411d58a6e26bbb0244990b50b8533509f5678c1ac93ace0be4f068a4",
+  "input_checks": [
+    {
+      "subject": "sub-verse012",
+      "raw_shape": [
+        194,
+        252,
+        35
+      ],
+      "native_orientation": [
+        "P",
+        "I",
+        "R"
+      ],
+      "annotation_orientation": [
+        "P",
+        "I",
+        "R"
+      ],
+      "n_centroids": 6,
+      "ct_sha256": "395fd6e8b36325b856c813032a0fec2104a049a32f0b3d4f34682b032cbe2662",
+      "cumulative_range_requests": 9
+    },
+    {
+      "subject": "sub-verse020",
+      "raw_shape": [
+        402,
+        402,
+        85
+      ],
+      "native_orientation": [
+        "P",
+        "I",
+        "R"
+      ],
+      "annotation_orientation": [
+        "P",
+        "I",
+        "R"
+      ],
+      "n_centroids": 17,
+      "ct_sha256": "7424d0f0ad3c36b6c5ffe5f3acb9af62c16da3cec8c507597965f95410570d9a",
+      "cumulative_range_requests": 15
+    },
+    {
+      "subject": "sub-verse029",
+      "raw_shape": [
+        461,
+        599,
+        98
+      ],
+      "native_orientation": [
+        "P",
+        "I",
+        "R"
+      ],
+      "annotation_orientation": [
+        "P",
+        "I",
+        "R"
+      ],
+      "n_centroids": 17,
+      "ct_sha256": "274e6ad441f11577f09e81107cf89e696097cd42a6b3d707bb68caf8cad7a91e",
+      "cumulative_range_requests": 21
+    },
+    {
+      "subject": "sub-verse032",
+      "raw_shape": [
+        184,
+        303,
+        61
+      ],
+      "native_orientation": [
+        "P",
+        "I",
+        "R"
+      ],
+      "annotation_orientation": [
+        "P",
+        "I",
+        "R"
+      ],
+      "n_centroids": 6,
+      "ct_sha256": "059ab6ee6d090f1af5c15eb2d718026f40b2be53276ee6bb0b9bb35269686866",
+      "cumulative_range_requests": 27
+    },
+    {
+      "subject": "sub-verse038",
+      "raw_shape": [
+        405,
+        525,
+        116
+      ],
+      "native_orientation": [
+        "P",
+        "I",
+        "R"
+      ],
+      "annotation_orientation": [
+        "P",
+        "I",
+        "R"
+      ],
+      "n_centroids": 7,
+      "ct_sha256": "c6b6c94944387760beddb65aa6868db3cc4500086bb977d9ef72709ddebad15e",
+      "cumulative_range_requests": 33
+    },
+    {
+      "subject": "sub-verse040",
+      "raw_shape": [
+        340,
+        471,
+        127
+      ],
+      "native_orientation": [
+        "P",
+        "I",
+        "R"
+      ],
+      "annotation_orientation": [
+        "P",
+        "I",
+        "R"
+      ],
+      "n_centroids": 9,
+      "ct_sha256": "5c7d74f0e70afbb439492cf83f0cfc77b0479fd5a42b9cb4132802bd51feaebc",
+      "cumulative_range_requests": 39
+    }
+  ],
+  "cuda_qualification_revalidated": true,
+  "view_convention": "Mathematical z-ray/x-ray basis, not anatomical AP/lateral.",
+  "fidelity_acceptance": "Continuous characterization; no outcome-dependent threshold added.",
+  "timing_scope": "optimization_s is an uncontrolled execution diagnostic, not performance evidence.",
+  "limitations": [
+    "Independent anatomy but shared downsampled attenuation and detector grid.",
+    "Noiseless parallel targets; no acquired-X-ray generalization."
+  ],
+  "source_pin_note": "Expected CT hashes added after acquisition; original run computed all source hashes before optimization. Fresh public-source download matches every acquired CT digest.",
+  "gpu_metadata": {
+    "name": "NVIDIA L4",
+    "uuid": "GPU-c94c79a8-ee72-4e68-c557-d707a5110456",
+    "driver": "580.82.07",
+    "torch": "2.14.1+cu130",
+    "cuda": "13.0",
+    "runtime": "Released after result archive downloaded and verified."
+  }
+}

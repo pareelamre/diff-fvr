@@ -1,0 +1,1184 @@
+{
+  "status": "complete descriptive device-stratified development replication",
+  "protocol_sha256": "b75cf9ad192a55c67a62567c78b5e5c56dab411a4c6f87e1dd035eb6b5db8f80",
+  "code_identity": {
+    "git_commit": "cba875ae3a87859cbd9d2ce7d27265dcdbbefde0",
+    "git_status": "",
+    "code_sha256": {
+      "src/fvr/__init__.py": "ce100b45cb7bce3c0bd1291a8927f139f671ac7fcf2a5f6a410b140af9224f44",
+      "src/fvr/articulated_spine.py": "f85ccf38f2bd0945c95522eb846710665c2a885d32406757a561f8654282828d",
+      "src/fvr/cli.py": "9b9f442c0b7512a9859f28f5444f32c329e5a5c10bc2aa2559dcc1ba143df3db",
+      "src/fvr/cone_beam_fvr.py": "5efde8e74924f77845809a362001b7d5b7111feb2fe18a431e38fd4eb9249e2f",
+      "src/fvr/core_engine.py": "a4f6c782c2424f1f2d32b19a32b2b9ecd40802ff129db3d372e288af204239fe",
+      "src/fvr/dicom_loader.py": "bdb35efbfb4046dbaa650e885f49d8f7d4e84c55b5543bbb1178dc01e766ea4e",
+      "src/fvr/diff_fvr.py": "dd2f474cda28712805aa4b9ee7371dcff673b3d31f34c60a0f19b85a3ea6d61b",
+      "src/fvr/fvr_engine.py": "bd8069eba905a94f6556140a49158e0d43469dd505eca430c12f5bbe7603f3ee",
+      "src/fvr/gradient_optimizer.py": "b1879c38b404d56fe0480d0b85406e1b28233c7abf6d89999daf491e4884112c",
+      "src/fvr/gradients.py": "28b8f171e53cb25b6c66f6e70465875f9515ddd3029e3c288a7068a6a4a09036",
+      "src/fvr/raycasting_drr.py": "7224bc8f1214354060ba3bc57eb462383ed98be893b07c766873e73ec9876d55",
+      "src/fvr/registration_3d2d.py": "61e2b1e7c5e5b86e32b2c86ad2b220fffbefaf147a5733f2d220fcf5955f06d8",
+      "src/fvr/robust_registration.py": "768674aeae3547920ab1849b86f6b97225dabe331749dede0e67c7bd3ed7fe2d",
+      "src/fvr/rotation_2d.py": "58a552ca41352373b4615e5399988b85607985895a001c5f5ce6fc13e89a3094",
+      "src/fvr/torch_engine.py": "2569001e147d192d84f81c0f713c23c7f782ad6c5d1a0629cc6ef9c2ebc629a1",
+      "src/fvr/triton_slice.py": "309a747c6580a48a0651df31d6511c23c78561602692e2a7211e59259c6e788d",
+      "experiments/exp10_metal_occlusion_stress.py": "e92a06deeb60fcb131f97a40a54fa1cf7c092f53a7d2a365593911f378847996",
+      "experiments/exp11_radiation_dose_sweep.py": "f47cd7893f6395466a99df163d395c7f56f08b9831038197f0090bebd0653a57",
+      "experiments/exp12_multicenter_kaggle_benchmark.py": "d381206424bb4e013adbaf77c40e2b3282dac4e919df64ba3538a10d4e802197",
+      "experiments/exp13_amos_nct_benchmark.py": "6ad213d633453846ef06e1147632679fd82b70a79ac3cad43af6644aae1f3840",
+      "experiments/exp14_resolved_physical_limits.py": "b20ef0a85a1c7a8d4aa8d1cca923c28a8504708ed52d1831e491542600a79bfe",
+      "experiments/exp15_articulated_spine_registration.py": "b4acf6a7f60027a39d6b0cb120481443c48f09ed413f0fabefdcd90f87c3a941",
+      "experiments/exp16_unified_ced_curves.py": "fe2ddb001694d39e01f8ea0c130f6d9c1246fc16643ded69fdec4a95832c61ca",
+      "experiments/exp17_fov_truncation_stress.py": "6c58580d441a23a42d9749701cc824c2749f833cf98e61969745000db3bc30bf",
+      "experiments/exp18_non_orthogonal_angulation_sweep.py": "6c8e89a2a8f72ab074bc45072ce36f0de5ec5bffbc32ec72833331996813f5f6",
+      "experiments/exp19_beam_hardening_soft_tissue.py": "607558a3fa72c2e7099f90be95daf87ebda3f7511a42350f497ddbdde0b5c8c8",
+      "experiments/exp1_complexity_scaling.py": "6462d9998a7abab2470deca130022b8adfb4f2de7a7395e37cd0ca39ac40d04b",
+      "experiments/exp20_intraoperative_motion_blur.py": "ec684e85a184907617892690c3fc7e07ed8ec13e64e4e34bad27a684742602c2",
+      "experiments/exp21_ct_slice_thickness_anisotropy.py": "3c13f7243438df1f67cdf5cd15d1c963227b7d978e99e540266df5f450edf024",
+      "experiments/exp22_dynamic_streaming_tracking.py": "8f3658b4bce89cb2f6441ed97e162bbfd92a48f84859ce2a7b7e651dfb45bd91",
+      "experiments/exp23_articulated_instrumented_spine.py": "1de2c6b136cfbd779f580d0709c7538956cc47452fa19b2f929ff5e52e462bb8",
+      "experiments/exp24_torch_gpu_benchmark.py": "b8a5008a5af939afec8373027af07f5033db2d5c1c7aeaff2452cc1139f6f6da",
+      "experiments/exp25_deepfluoro_real_xray_baseline.py": "205c6c58be6f77f274724986075e1b7dea79fdc4ea2ec43467a4196c3d7f7f78",
+      "experiments/exp26_deepfluoro_multisubject.py": "9b6e58aef24241656e7dac6c32b817d81ac7c9e1b2dde51a7755c5c3e75228a0",
+      "experiments/exp27_geometry_matched_benchmark.py": "12678b18a9d581195a476078718bf7a2e8888e05300e234104f3c3745bdd5327",
+      "experiments/exp29_gpu_triton_and_ablation.py": "76bae3c947dd2a040cbcbc71d343ddbaefcb046cb0a95899c5d0d2abb7f3c5c1",
+      "experiments/exp2_rotation_fidelity_360.py": "27a26fe68de36b75d3b054a390815da69e31eac4f3b554bb849b49e7fed4711a",
+      "experiments/exp30_gpu_multistart_registration.py": "b51e6837d94f378270769128c357945b5922af765bac4a13acdd373569016cee",
+      "experiments/exp31_deepfluoro_gpu_cohort.py": "03514f67d42b4e4d3ef49b287c3ae14872f002921c321b3ef1ce7bc481ded062",
+      "experiments/exp32_reviewer_rebuttal_gpu.py": "78012acf52daefb7d594f9af2c2a2dea6f9e188eb3c1c19517552dcd902391d5",
+      "experiments/exp33_softspot_fixes_gpu.py": "5841ca9d4b5de430dd5882d9777f3c9e7b43e647ad72c4feaeae3c7b81e93080",
+      "experiments/exp34_journal_replication.py": "a11685c907fe9e0c45dcea89b072049cec547e7af2e41f0a7a1b98c46b5a3699",
+      "experiments/exp3_ablation_studies.py": "fb17ae762ed30f8bd344b2742f5232d902479e842984e502f50ea20ca416d7eb",
+      "experiments/exp4_registration_monte_carlo.py": "5fe86069d7b6ffcfe6717cd16f9d434bde274ad59b836ddb695f54599f1ad018",
+      "experiments/exp5_energy_landscape.py": "740e1f33a82e34e6afda1f022c22c7159b685129525a16c54a1878b74b72b835",
+      "experiments/exp6_biplanar_registration_benchmark.py": "c8fb7368498b0bf6e2fbd466a7c3857a52f03a2e5e50bc8ff851161073e2eba9",
+      "experiments/exp7_clinical_dicom_registration.py": "47ff5db35e91874d7b6322d259f667ef1ad44958cddbb44fe8dbd5bff043ac8a",
+      "experiments/exp8_capture_basin_sweep.py": "c36e710c895583fb3a05f47dddcf44c10b70539cf0822f6df784e5bca9197919",
+      "experiments/exp9_perspective_conebeam_stress.py": "cf7b3a539a606dbf012df31fcebed1f667bfcde1b1d538cb36b696b28f852d1d",
+      "experiments/exp9b_perspective_isocenter_calibrated.py": "18fb53b00c8de533d8c29256ab21c3e705a71953182af23f64aed09192a0e3d8",
+      "experiments/journal_protocol.py": "2b3823d7b39b7c073d9859757423ba92243fefb2dcb5fceddce2b500ec47ba23",
+      "experiments/make_gpu_figures.py": "b326ca4c39a43224d6a3d73ce1ff01ef841f07deadaf4a44be6fb216cc14adef",
+      "experiments/make_paper_figures_js.py": "82ac97522fc400f678612aa498b20110d29c51e9013c8f8f5f4c185549a01481",
+      "experiments/process_resources.py": "999bb9c71814b6e2b2d1ca1a96e41015e76c27b44c27be5cb87f575514bfb03a",
+      "experiments/summarize_journal_replication.py": "788c7f6306d853cb82dc957ecdb6e55c27b7193dc7e9bf9acf13049133c1e97d",
+      "dependency/diffdrr/detector.py": "18348758c3352b39e859ccfdbdce256cc4da51dbb245ff917291b7026429e96f",
+      "dependency/diffdrr/renderers.py": "1b95938e115e69efb059605f4632c7c21b3484c1aab4e27382d1d09d0d4c6dfe",
+      "dependency/diffdrr/utils.py": "4526ae44e37b96413fd8d19e1fe14237110cab5379de93207bf48631457ebb90",
+      "dependency/diffdrr/data.py": "21ca7dbfa2835ebfb8cad6508ae23c5368c5d781d507e59d52721a662d8acac9",
+      "dependency/diffdrr/registration.py": "b62ed5ea40356e05c7b3b512fb79b310016eba198c92723c6a8f7ac0af3c6077",
+      "dependency/diffdrr/visualization.py": "56e087ba8b222ee62e3d221b56463663e466be0f45d410d10114d874b3fce42d",
+      "dependency/diffdrr/metrics.py": "a611155073a6c5f65c7f611a5595eda266fe05bf850e1ede66eb46fac623d818",
+      "dependency/diffdrr/pose.py": "e4869a311cc2ba0691ac3c11686f621ad5c7615cf084c421af8cf6b0273d3e7c",
+      "dependency/diffdrr/drr.py": "09b73d5aff11775aafdc66bf574d56d06c452e70a6186f2694160a12fcabed48",
+      "dependency/diffdrr/__init__.py": "6da01c1232d260521e359179d6d38c980ff300c84df07bca69e97e514f91b9e7",
+      "dependency/diffdrr/_modidx.py": "544d83d6b0881da21ca2d9c4482e23ca7ce40a2d5ec853faeddf1b700271d51e",
+      "dependency/nanodrr/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dependency/nanodrr/plot/gif.py": "88aabb0fa51337e81873287b2a2651d6c41f521f80e23dc1029271cec12ee423",
+      "dependency/nanodrr/plot/imshow.py": "153db93cd9fd1163dc092632355abc2d1fba3ef463fbd3b8354a5b828e67a24a",
+      "dependency/nanodrr/plot/__init__.py": "4cf279f0279165d453c7cea6c9babcc68100d95f3be2d25e83140139529c5645",
+      "dependency/nanodrr/metrics/ncc.py": "5e89d846d0cfa1662edd65fd571604da0098f1b5f8547bfd809a4cb77211c957",
+      "dependency/nanodrr/metrics/geo.py": "ed10c3614f468a3224a501d93f8ee423e292360b5fa3c3a663b429889f9a8ab8",
+      "dependency/nanodrr/metrics/__init__.py": "89d1d8bf547f71c2f84b24de5a9dd60613f259a109bc7b75c50f7f5bb4d89a34",
+      "dependency/nanodrr/data/preprocess.py": "401835f23911c9ea4ded38d28703250415bcd5f147aea63ee28caeed743f7b88",
+      "dependency/nanodrr/data/demo.py": "047234fbd54bf8d96d3a27f7ae2db85f5caa7341998514fc29d6f808adce41c7",
+      "dependency/nanodrr/data/subject.py": "d5b30b875fd4d88a2e4cdab89e482860590dc0656a75e94a4d1c3dd4efa7b96c",
+      "dependency/nanodrr/data/__init__.py": "bdb626cddd84398551fa54fbc0b66dc0ee50ccd016c7294a45e22caa4e6fdaa5",
+      "dependency/nanodrr/camera/intrinsics.py": "17a1235520db6d8dabb7b45e50abaddbadf5ddb2bfe8a2c3c02a1fc7050651a8",
+      "dependency/nanodrr/camera/extrinsics.py": "60df8344252acd3932274b81e9da31f5cddcdb67a278a4a0e4949859620e6f11",
+      "dependency/nanodrr/camera/__init__.py": "d0cbc98844ddd79d660f9b1760cd33de9cb994e867f180c82bfcc0c980f1503c",
+      "dependency/nanodrr/camera/homography.py": "b096367b02021301b600f6697e72b4d5eb9a9194b7d5435624fb08275885c572",
+      "dependency/nanodrr/drr/_fused.py": "53f51bc828a884043c51a546915ef76f68a5ba33ccf321a2964707daf87c3d8f",
+      "dependency/nanodrr/drr/_triton.py": "354c5d25d0070a0be52c0850017f0aefa0074299ed873aec61ab7e7b03ecbc6b",
+      "dependency/nanodrr/drr/_torch.py": "a086632ead7bca1abc3bbff42f0aee8bc019596a8f4c877cd44d0185e67afc98",
+      "dependency/nanodrr/drr/_metal.py": "546dcfb5a924e679ed60687da4ca2f2363ca7b92446c464a4b85aa54b37d23aa",
+      "dependency/nanodrr/drr/renderer.py": "29ccab7203ed8ac146ee7253237d4673ae730437c6308ec0b816cd516516fad2",
+      "dependency/nanodrr/drr/drr.py": "c4401970fdce017040844fc9ddaf1b9a3a3079f5093187f13a24796546c6ee45",
+      "dependency/nanodrr/drr/__init__.py": "68935c24935f9740754ff466e3ac4876f4ddfe0466e7d932bf820d9973d5e4ed",
+      "dependency/nanodrr/geometry/transform.py": "51dbf7f02299e0b143ae3eb153b81ce8c902c42972eee0092dc93a84600173d2",
+      "dependency/nanodrr/geometry/se3.py": "725d9105ee0a9bbf1b204376d3afb4d74e935bf751caa43cbdd53b116d022a50",
+      "dependency/nanodrr/geometry/__init__.py": "442391fffb718aa27f641b5634dfd8e835fe3c47d8ff2a409ffa39e1dcea447f",
+      "dependency/nanodrr/scene/utils.py": "0916f2e5cfb0994fb71d79cfe8a13453cfad547aa4ebd0da4fab48eb4346b71c",
+      "dependency/nanodrr/scene/surface.py": "8456bd2760fb7f7e4e6b888b3a101072de9b472f39ec7ffe6a4283edc790f48c",
+      "dependency/nanodrr/scene/scene.py": "3fe303532067e8774017865ffc87d798836c796fa8bc8c16d58b108aa1c8b91d",
+      "dependency/nanodrr/scene/camera.py": "a22b5ffb46055711a76e23520d7959c54549c23fb4a0e9b272b2087a1af5a7c0",
+      "dependency/nanodrr/scene/__init__.py": "c36daef3dc9baa107c037c847eee175f10ab83ed6fc3a015bd92d7ca8e2bbd40",
+      "dependency/nanodrr/registration/registration.py": "da640988bef9bba63b4035d39b97a282a3f66274248eff3fcb7a1deaf85c8e15",
+      "dependency/nanodrr/registration/__init__.py": "087f399e6d5e889418bf282bf010bc4bc9b60863175dd6f37ff275451e5e73cd"
+    },
+    "packages": {
+      "torch": "2.14.1+cu130",
+      "diffdrr": "0.6.1",
+      "nanodrr": "0.1.7",
+      "scipy": "1.16.3",
+      "triton": "3.8.0",
+      "nibabel": "5.4.2",
+      "pydicom": "3.0.2",
+      "psutil": "5.9.5",
+      "nvidia-ml-py": "13.615.71"
+    }
+  },
+  "accuracy": [
+    {
+      "method": "DiffDRR-SS-FP32",
+      "n_specimens": 6,
+      "n_trials": 24,
+      "median_mtre_mm": 5.052587270736694,
+      "successes": 8,
+      "success_threshold_mm": 2.0,
+      "specimen_results": [
+        {
+          "subject": "subject01",
+          "median_mtre_mm": 5.384781718254089,
+          "successes": 1
+        },
+        {
+          "subject": "subject02",
+          "median_mtre_mm": 6.955049067735672,
+          "successes": 2
+        },
+        {
+          "subject": "subject03",
+          "median_mtre_mm": 3.8306809663772583,
+          "successes": 1
+        },
+        {
+          "subject": "subject04",
+          "median_mtre_mm": 8.791069030761719,
+          "successes": 1
+        },
+        {
+          "subject": "subject05",
+          "median_mtre_mm": 7.835535526275635,
+          "successes": 1
+        },
+        {
+          "subject": "subject06",
+          "median_mtre_mm": 3.38885161280632,
+          "successes": 2
+        }
+      ]
+    },
+    {
+      "method": "DiffDRR-C64-FP32",
+      "n_specimens": 6,
+      "n_trials": 24,
+      "median_mtre_mm": 0.8662523925304413,
+      "successes": 23,
+      "success_threshold_mm": 2.0,
+      "specimen_results": [
+        {
+          "subject": "subject01",
+          "median_mtre_mm": 1.2423344254493713,
+          "successes": 3
+        },
+        {
+          "subject": "subject02",
+          "median_mtre_mm": 0.8836937844753265,
+          "successes": 4
+        },
+        {
+          "subject": "subject03",
+          "median_mtre_mm": 0.8952004611492157,
+          "successes": 4
+        },
+        {
+          "subject": "subject04",
+          "median_mtre_mm": 0.8446825742721558,
+          "successes": 4
+        },
+        {
+          "subject": "subject05",
+          "median_mtre_mm": 0.7044031023979187,
+          "successes": 4
+        },
+        {
+          "subject": "subject06",
+          "median_mtre_mm": 0.8571850955486298,
+          "successes": 4
+        }
+      ]
+    },
+    {
+      "method": "nanodrr-C64-FP32",
+      "n_specimens": 6,
+      "n_trials": 24,
+      "median_mtre_mm": 1.095479428768158,
+      "successes": 22,
+      "success_threshold_mm": 2.0,
+      "specimen_results": [
+        {
+          "subject": "subject01",
+          "median_mtre_mm": 1.4129473567008972,
+          "successes": 3
+        },
+        {
+          "subject": "subject02",
+          "median_mtre_mm": 0.8103939890861511,
+          "successes": 4
+        },
+        {
+          "subject": "subject03",
+          "median_mtre_mm": 0.7125020325183868,
+          "successes": 3
+        },
+        {
+          "subject": "subject04",
+          "median_mtre_mm": 1.1290053129196167,
+          "successes": 4
+        },
+        {
+          "subject": "subject05",
+          "median_mtre_mm": 1.1544569730758667,
+          "successes": 4
+        },
+        {
+          "subject": "subject06",
+          "median_mtre_mm": 0.9441129565238953,
+          "successes": 4
+        }
+      ]
+    },
+    {
+      "method": "PoU-FVR-G4x4x4-R64",
+      "n_specimens": 6,
+      "n_trials": 24,
+      "median_mtre_mm": 1.4498248100280762,
+      "successes": 20,
+      "success_threshold_mm": 2.0,
+      "specimen_results": [
+        {
+          "subject": "subject01",
+          "median_mtre_mm": 1.8916192054748535,
+          "successes": 3
+        },
+        {
+          "subject": "subject02",
+          "median_mtre_mm": 0.8507378101348877,
+          "successes": 4
+        },
+        {
+          "subject": "subject03",
+          "median_mtre_mm": 2.1292144060134888,
+          "successes": 1
+        },
+        {
+          "subject": "subject04",
+          "median_mtre_mm": 1.8547219038009644,
+          "successes": 4
+        },
+        {
+          "subject": "subject05",
+          "median_mtre_mm": 0.9934247434139252,
+          "successes": 4
+        },
+        {
+          "subject": "subject06",
+          "median_mtre_mm": 1.0447929501533508,
+          "successes": 4
+        }
+      ]
+    },
+    {
+      "method": "PoU-FVR+nanodrr-K4-FP32",
+      "n_specimens": 6,
+      "n_trials": 24,
+      "median_mtre_mm": 0.968831479549408,
+      "successes": 24,
+      "success_threshold_mm": 2.0,
+      "specimen_results": [
+        {
+          "subject": "subject01",
+          "median_mtre_mm": 1.43033105134964,
+          "successes": 4
+        },
+        {
+          "subject": "subject02",
+          "median_mtre_mm": 0.7669658958911896,
+          "successes": 4
+        },
+        {
+          "subject": "subject03",
+          "median_mtre_mm": 0.6237019896507263,
+          "successes": 4
+        },
+        {
+          "subject": "subject04",
+          "median_mtre_mm": 1.0021583437919617,
+          "successes": 4
+        },
+        {
+          "subject": "subject05",
+          "median_mtre_mm": 1.2110708355903625,
+          "successes": 4
+        },
+        {
+          "subject": "subject06",
+          "median_mtre_mm": 0.9651926159858704,
+          "successes": 4
+        }
+      ]
+    },
+    {
+      "method": "PoU-FVR+DiffDRR-K4-FP32",
+      "n_specimens": 6,
+      "n_trials": 24,
+      "median_mtre_mm": 0.8559140264987946,
+      "successes": 24,
+      "success_threshold_mm": 2.0,
+      "specimen_results": [
+        {
+          "subject": "subject01",
+          "median_mtre_mm": 1.2193757891654968,
+          "successes": 4
+        },
+        {
+          "subject": "subject02",
+          "median_mtre_mm": 0.8813613653182983,
+          "successes": 4
+        },
+        {
+          "subject": "subject03",
+          "median_mtre_mm": 0.9559452533721924,
+          "successes": 4
+        },
+        {
+          "subject": "subject04",
+          "median_mtre_mm": 0.7974248826503754,
+          "successes": 4
+        },
+        {
+          "subject": "subject05",
+          "median_mtre_mm": 0.7461778521537781,
+          "successes": 4
+        },
+        {
+          "subject": "subject06",
+          "median_mtre_mm": 0.8627932369709015,
+          "successes": 4
+        }
+      ]
+    }
+  ],
+  "all_worker_memory": [
+    {
+      "method": "DiffDRR-SS-FP32",
+      "n_workers": 6,
+      "scope": "Maximum over all observed specimens, including crossed-device specimens; not a paired device comparison.",
+      "max_process_gpu_MiB": 8080.0,
+      "max_process_tree_rss_MiB": 2416.171875
+    },
+    {
+      "method": "DiffDRR-C64-FP32",
+      "n_workers": 6,
+      "scope": "Maximum over all observed specimens, including crossed-device specimens; not a paired device comparison.",
+      "max_process_gpu_MiB": 15570.0,
+      "max_process_tree_rss_MiB": 2513.10546875
+    },
+    {
+      "method": "nanodrr-C64-FP32",
+      "n_workers": 6,
+      "scope": "Maximum over all observed specimens, including crossed-device specimens; not a paired device comparison.",
+      "max_process_gpu_MiB": 4768.0,
+      "max_process_tree_rss_MiB": 2489.3203125
+    },
+    {
+      "method": "PoU-FVR-G4x4x4-R64",
+      "n_workers": 6,
+      "scope": "Maximum over all observed specimens, including crossed-device specimens; not a paired device comparison.",
+      "max_process_gpu_MiB": 4638.0,
+      "max_process_tree_rss_MiB": 6946.87109375
+    },
+    {
+      "method": "PoU-FVR+nanodrr-K4-FP32",
+      "n_workers": 6,
+      "scope": "Maximum over all observed specimens, including crossed-device specimens; not a paired device comparison.",
+      "max_process_gpu_MiB": 4886.0,
+      "max_process_tree_rss_MiB": 2522.83984375
+    },
+    {
+      "method": "PoU-FVR+DiffDRR-K4-FP32",
+      "n_workers": 6,
+      "scope": "Maximum over all observed specimens, including crossed-device specimens; not a paired device comparison.",
+      "max_process_gpu_MiB": 16122.0,
+      "max_process_tree_rss_MiB": 2519.91015625
+    }
+  ],
+  "device_strata": [
+    {
+      "gpu_uuid": "GPU-3c64b5fa-a1e4-76cf-7109-d7c97ccb3ff1",
+      "gpu_name": "NVIDIA L4",
+      "observed_workers": [
+        {
+          "subject": "subject01",
+          "method": "DiffDRR-C64-FP32"
+        },
+        {
+          "subject": "subject01",
+          "method": "DiffDRR-SS-FP32"
+        },
+        {
+          "subject": "subject01",
+          "method": "PoU-FVR+DiffDRR-K4-FP32"
+        },
+        {
+          "subject": "subject01",
+          "method": "PoU-FVR+nanodrr-K4-FP32"
+        },
+        {
+          "subject": "subject01",
+          "method": "PoU-FVR-G4x4x4-R64"
+        },
+        {
+          "subject": "subject01",
+          "method": "nanodrr-C64-FP32"
+        },
+        {
+          "subject": "subject02",
+          "method": "DiffDRR-C64-FP32"
+        },
+        {
+          "subject": "subject02",
+          "method": "DiffDRR-SS-FP32"
+        },
+        {
+          "subject": "subject02",
+          "method": "PoU-FVR+DiffDRR-K4-FP32"
+        },
+        {
+          "subject": "subject02",
+          "method": "PoU-FVR+nanodrr-K4-FP32"
+        },
+        {
+          "subject": "subject02",
+          "method": "PoU-FVR-G4x4x4-R64"
+        },
+        {
+          "subject": "subject02",
+          "method": "nanodrr-C64-FP32"
+        },
+        {
+          "subject": "subject03",
+          "method": "DiffDRR-C64-FP32"
+        },
+        {
+          "subject": "subject03",
+          "method": "DiffDRR-SS-FP32"
+        },
+        {
+          "subject": "subject03",
+          "method": "PoU-FVR+DiffDRR-K4-FP32"
+        },
+        {
+          "subject": "subject03",
+          "method": "PoU-FVR+nanodrr-K4-FP32"
+        },
+        {
+          "subject": "subject03",
+          "method": "PoU-FVR-G4x4x4-R64"
+        },
+        {
+          "subject": "subject03",
+          "method": "nanodrr-C64-FP32"
+        },
+        {
+          "subject": "subject04",
+          "method": "DiffDRR-SS-FP32"
+        },
+        {
+          "subject": "subject04",
+          "method": "PoU-FVR+DiffDRR-K4-FP32"
+        },
+        {
+          "subject": "subject04",
+          "method": "PoU-FVR+nanodrr-K4-FP32"
+        },
+        {
+          "subject": "subject04",
+          "method": "PoU-FVR-G4x4x4-R64"
+        }
+      ],
+      "matched_subjects": [
+        "subject01",
+        "subject02",
+        "subject03"
+      ],
+      "methods": [
+        {
+          "method": "DiffDRR-SS-FP32",
+          "n_specimens": 3,
+          "n_trials": 12,
+          "median_reg_s": 14.329163331499785,
+          "median_setup_s": 2.1330391179981234,
+          "median_full_optimization_warmup_s": 17.441890592000163,
+          "median_setup_plus_warmup_s": 19.767347297000924,
+          "median_worker_wall_s": 81.70896557000015,
+          "max_process_gpu_MiB": 7188.0,
+          "max_process_tree_rss_MiB": 2359.1015625,
+          "max_allocator_allocated_MiB": 5925.0283203125,
+          "max_allocator_reserved_MiB": 6936.0,
+          "max_sample_gap_s": 0.04958201099998405
+        },
+        {
+          "method": "DiffDRR-C64-FP32",
+          "n_specimens": 3,
+          "n_trials": 12,
+          "median_reg_s": 1127.189354021999,
+          "median_setup_s": 2.187698994001039,
+          "median_full_optimization_warmup_s": 1130.297757628001,
+          "median_setup_plus_warmup_s": 1132.6827388190004,
+          "median_worker_wall_s": 5646.185293447999,
+          "max_process_gpu_MiB": 14326.0,
+          "max_process_tree_rss_MiB": 2371.9375,
+          "max_allocator_allocated_MiB": 11597.79150390625,
+          "max_allocator_reserved_MiB": 14074.0,
+          "max_sample_gap_s": 0.05726113299897406
+        },
+        {
+          "method": "nanodrr-C64-FP32",
+          "n_specimens": 3,
+          "n_trials": 12,
+          "median_reg_s": 8.115964905998226,
+          "median_setup_s": 7.042389501999423,
+          "median_full_optimization_warmup_s": 8.208221638000396,
+          "median_setup_plus_warmup_s": 15.250611139999819,
+          "median_worker_wall_s": 52.039165600999695,
+          "max_process_gpu_MiB": 4308.0,
+          "max_process_tree_rss_MiB": 2379.5,
+          "max_allocator_allocated_MiB": 3301.14013671875,
+          "max_allocator_reserved_MiB": 4070.0,
+          "max_sample_gap_s": 0.06269769000027736
+        },
+        {
+          "method": "PoU-FVR-G4x4x4-R64",
+          "n_specimens": 3,
+          "n_trials": 12,
+          "median_reg_s": 15.60451998499866,
+          "median_setup_s": 4.195149143997696,
+          "median_full_optimization_warmup_s": 18.6017946389984,
+          "median_setup_plus_warmup_s": 22.796943782996095,
+          "median_worker_wall_s": 90.43081097399772,
+          "max_process_gpu_MiB": 4638.0,
+          "max_process_tree_rss_MiB": 6809.8359375,
+          "max_allocator_allocated_MiB": 3906.630859375,
+          "max_allocator_reserved_MiB": 4378.0,
+          "max_sample_gap_s": 0.054301718999340665
+        },
+        {
+          "method": "PoU-FVR+nanodrr-K4-FP32",
+          "n_specimens": 3,
+          "n_trials": 12,
+          "median_reg_s": 2.218313727500572,
+          "median_setup_s": 7.4403838319994975,
+          "median_full_optimization_warmup_s": 2.623979766998673,
+          "median_setup_plus_warmup_s": 10.06436359899817,
+          "median_worker_wall_s": 23.601738110999577,
+          "max_process_gpu_MiB": 4384.0,
+          "max_process_tree_rss_MiB": 2426.328125,
+          "max_allocator_allocated_MiB": 3366.80859375,
+          "max_allocator_reserved_MiB": 4148.0,
+          "max_sample_gap_s": 0.04250380800112907
+        },
+        {
+          "method": "PoU-FVR+DiffDRR-K4-FP32",
+          "n_specimens": 3,
+          "n_trials": 12,
+          "median_reg_s": 30.32727276000014,
+          "median_setup_s": 2.619240243000604,
+          "median_full_optimization_warmup_s": 33.39053755199984,
+          "median_setup_plus_warmup_s": 36.48116603899962,
+          "median_worker_wall_s": 162.3811662729995,
+          "max_process_gpu_MiB": 14878.0,
+          "max_process_tree_rss_MiB": 2412.9765625,
+          "max_allocator_allocated_MiB": 11663.7861328125,
+          "max_allocator_reserved_MiB": 14618.0,
+          "max_sample_gap_s": 0.055223744000613806
+        }
+      ],
+      "comparisons": [
+        {
+          "method": "DiffDRR-SS-FP32",
+          "reference": "DiffDRR-C64-FP32",
+          "reference_role": "prespecified",
+          "n_specimens": 3,
+          "n_pairs": 12,
+          "n_joint_success": 4,
+          "method_successes": 4,
+          "reference_successes": 11,
+          "median_warm_speed_ratio_all_pairs": 78.73063103674457,
+          "median_warm_speed_ratio_joint_success": 78.65925477529703,
+          "median_worker_wall_ratio": 69.10117211814298,
+          "median_process_gpu_ratio": 1.9930439621591542,
+          "median_host_rss_ratio": 1.0054408004670734,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "nanodrr-C64-FP32",
+          "reference": "DiffDRR-C64-FP32",
+          "reference_role": "prespecified",
+          "n_specimens": 3,
+          "n_pairs": 12,
+          "n_joint_success": 10,
+          "method_successes": 10,
+          "reference_successes": 11,
+          "median_warm_speed_ratio_all_pairs": 137.745690674318,
+          "median_warm_speed_ratio_joint_success": 137.745690674318,
+          "median_worker_wall_ratio": 105.68353288048422,
+          "median_process_gpu_ratio": 3.3254410399257197,
+          "median_host_rss_ratio": 0.989916000214696,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "PoU-FVR-G4x4x4-R64",
+          "reference": "DiffDRR-C64-FP32",
+          "reference_role": "prespecified",
+          "n_specimens": 3,
+          "n_pairs": 12,
+          "n_joint_success": 8,
+          "method_successes": 8,
+          "reference_successes": 11,
+          "median_warm_speed_ratio_all_pairs": 72.32776749195193,
+          "median_warm_speed_ratio_joint_success": 70.38984302363754,
+          "median_worker_wall_ratio": 61.90386470920503,
+          "median_process_gpu_ratio": 2.840017248814144,
+          "median_host_rss_ratio": 0.3437668859037766,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "PoU-FVR+nanodrr-K4-FP32",
+          "reference": "DiffDRR-C64-FP32",
+          "reference_role": "prespecified",
+          "n_specimens": 3,
+          "n_pairs": 12,
+          "n_joint_success": 11,
+          "method_successes": 12,
+          "reference_successes": 11,
+          "median_warm_speed_ratio_all_pairs": 510.32805937514524,
+          "median_warm_speed_ratio_joint_success": 511.2861131162738,
+          "median_worker_wall_ratio": 237.41443875719077,
+          "median_process_gpu_ratio": 3.2677919708029197,
+          "median_host_rss_ratio": 0.9827069678817921,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "PoU-FVR+DiffDRR-K4-FP32",
+          "reference": "DiffDRR-C64-FP32",
+          "reference_role": "prespecified",
+          "n_specimens": 3,
+          "n_pairs": 12,
+          "n_joint_success": 11,
+          "method_successes": 12,
+          "reference_successes": 11,
+          "median_warm_speed_ratio_all_pairs": 37.168703899368786,
+          "median_warm_speed_ratio_joint_success": 37.185018373316645,
+          "median_worker_wall_ratio": 34.77118327845659,
+          "median_process_gpu_ratio": 0.9597784902360827,
+          "median_host_rss_ratio": 0.9795026771880047,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "DiffDRR-SS-FP32",
+          "reference": "nanodrr-C64-FP32",
+          "reference_role": "additional descriptive comparator",
+          "n_specimens": 3,
+          "n_pairs": 12,
+          "n_joint_success": 4,
+          "method_successes": 4,
+          "reference_successes": 10,
+          "median_warm_speed_ratio_all_pairs": 0.5716033477604774,
+          "median_warm_speed_ratio_joint_success": 0.5631483994277149,
+          "median_worker_wall_ratio": 0.6505047315247259,
+          "median_process_gpu_ratio": 0.5955516534972198,
+          "median_host_rss_ratio": 1.008646697464938,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "DiffDRR-C64-FP32",
+          "reference": "nanodrr-C64-FP32",
+          "reference_role": "additional descriptive comparator",
+          "n_specimens": 3,
+          "n_pairs": 12,
+          "n_joint_success": 10,
+          "method_successes": 11,
+          "reference_successes": 10,
+          "median_warm_speed_ratio_all_pairs": 0.007260727571648551,
+          "median_warm_speed_ratio_joint_success": 0.007260727571648551,
+          "median_worker_wall_ratio": 0.009462212066007327,
+          "median_process_gpu_ratio": 0.30071199218204664,
+          "median_host_rss_ratio": 1.0101867226947712,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "PoU-FVR-G4x4x4-R64",
+          "reference": "nanodrr-C64-FP32",
+          "reference_role": "additional descriptive comparator",
+          "n_specimens": 3,
+          "n_pairs": 12,
+          "n_joint_success": 8,
+          "method_successes": 8,
+          "reference_successes": 10,
+          "median_warm_speed_ratio_all_pairs": 0.5162315015034245,
+          "median_warm_speed_ratio_joint_success": 0.5120463373200647,
+          "median_worker_wall_ratio": 0.587002552680186,
+          "median_process_gpu_ratio": 0.877533419577404,
+          "median_host_rss_ratio": 0.3482566003448596,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "PoU-FVR+nanodrr-K4-FP32",
+          "reference": "nanodrr-C64-FP32",
+          "reference_role": "additional descriptive comparator",
+          "n_specimens": 3,
+          "n_pairs": 12,
+          "n_joint_success": 10,
+          "method_successes": 12,
+          "reference_successes": 10,
+          "median_warm_speed_ratio_all_pairs": 3.6528151656101597,
+          "median_warm_speed_ratio_joint_success": 3.6079888681377676,
+          "median_worker_wall_ratio": 2.2048870026545577,
+          "median_process_gpu_ratio": 0.9826642335766423,
+          "median_host_rss_ratio": 0.9938554172681778,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "PoU-FVR+DiffDRR-K4-FP32",
+          "reference": "nanodrr-C64-FP32",
+          "reference_role": "additional descriptive comparator",
+          "n_specimens": 3,
+          "n_pairs": 12,
+          "n_joint_success": 10,
+          "method_successes": 12,
+          "reference_successes": 10,
+          "median_warm_speed_ratio_all_pairs": 0.2686274963450288,
+          "median_warm_speed_ratio_joint_success": 0.2686274963450288,
+          "median_worker_wall_ratio": 0.3272333818322423,
+          "median_process_gpu_ratio": 0.28955504772146795,
+          "median_host_rss_ratio": 0.9861264452294074,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        }
+      ]
+    },
+    {
+      "gpu_uuid": "GPU-ad9b7007-8275-b1a0-07e8-df389bed6a7b",
+      "gpu_name": "NVIDIA L4",
+      "observed_workers": [
+        {
+          "subject": "subject04",
+          "method": "DiffDRR-C64-FP32"
+        },
+        {
+          "subject": "subject04",
+          "method": "nanodrr-C64-FP32"
+        },
+        {
+          "subject": "subject05",
+          "method": "DiffDRR-C64-FP32"
+        },
+        {
+          "subject": "subject05",
+          "method": "DiffDRR-SS-FP32"
+        },
+        {
+          "subject": "subject05",
+          "method": "PoU-FVR+DiffDRR-K4-FP32"
+        },
+        {
+          "subject": "subject05",
+          "method": "PoU-FVR+nanodrr-K4-FP32"
+        },
+        {
+          "subject": "subject05",
+          "method": "PoU-FVR-G4x4x4-R64"
+        },
+        {
+          "subject": "subject05",
+          "method": "nanodrr-C64-FP32"
+        },
+        {
+          "subject": "subject06",
+          "method": "DiffDRR-C64-FP32"
+        },
+        {
+          "subject": "subject06",
+          "method": "DiffDRR-SS-FP32"
+        },
+        {
+          "subject": "subject06",
+          "method": "PoU-FVR+DiffDRR-K4-FP32"
+        },
+        {
+          "subject": "subject06",
+          "method": "PoU-FVR+nanodrr-K4-FP32"
+        },
+        {
+          "subject": "subject06",
+          "method": "PoU-FVR-G4x4x4-R64"
+        },
+        {
+          "subject": "subject06",
+          "method": "nanodrr-C64-FP32"
+        }
+      ],
+      "matched_subjects": [
+        "subject05",
+        "subject06"
+      ],
+      "methods": [
+        {
+          "method": "DiffDRR-SS-FP32",
+          "n_specimens": 2,
+          "n_trials": 8,
+          "median_reg_s": 14.007272750999618,
+          "median_setup_s": 1.783306142498077,
+          "median_full_optimization_warmup_s": 17.146990712000843,
+          "median_setup_plus_warmup_s": 18.93029685449892,
+          "median_worker_wall_s": 79.48957672100005,
+          "max_process_gpu_MiB": 7400.0,
+          "max_process_tree_rss_MiB": 2416.171875,
+          "max_allocator_allocated_MiB": 6119.7783203125,
+          "max_allocator_reserved_MiB": 7148.0,
+          "max_sample_gap_s": 0.051949856999272015
+        },
+        {
+          "method": "DiffDRR-C64-FP32",
+          "n_specimens": 2,
+          "n_trials": 8,
+          "median_reg_s": 1103.17265211,
+          "median_setup_s": 1.7638775970008282,
+          "median_full_optimization_warmup_s": 1106.2234224380009,
+          "median_setup_plus_warmup_s": 1107.9873000350017,
+          "median_worker_wall_s": 5525.250632130002,
+          "max_process_gpu_MiB": 14260.0,
+          "max_process_tree_rss_MiB": 2390.8984375,
+          "max_allocator_allocated_MiB": 11961.29150390625,
+          "max_allocator_reserved_MiB": 14008.0,
+          "max_sample_gap_s": 0.050352165000731475
+        },
+        {
+          "method": "nanodrr-C64-FP32",
+          "n_specimens": 2,
+          "n_trials": 8,
+          "median_reg_s": 8.77787189350056,
+          "median_setup_s": 6.5561188009987745,
+          "median_full_optimization_warmup_s": 8.795936450999761,
+          "median_setup_plus_warmup_s": 15.352055251998536,
+          "median_worker_wall_s": 55.078780555501,
+          "max_process_gpu_MiB": 4458.0,
+          "max_process_tree_rss_MiB": 2399.58984375,
+          "max_allocator_allocated_MiB": 3435.12548828125,
+          "max_allocator_reserved_MiB": 4220.0,
+          "max_sample_gap_s": 0.051660649998666486
+        },
+        {
+          "method": "PoU-FVR-G4x4x4-R64",
+          "n_specimens": 2,
+          "n_trials": 8,
+          "median_reg_s": 15.539913270999023,
+          "median_setup_s": 3.805781911998565,
+          "median_full_optimization_warmup_s": 19.260263797500556,
+          "median_setup_plus_warmup_s": 23.06604570949912,
+          "median_worker_wall_s": 89.86707876700166,
+          "max_process_gpu_MiB": 4638.0,
+          "max_process_tree_rss_MiB": 6841.45703125,
+          "max_allocator_allocated_MiB": 3906.630859375,
+          "max_allocator_reserved_MiB": 4378.0,
+          "max_sample_gap_s": 0.057280835000710795
+        },
+        {
+          "method": "PoU-FVR+nanodrr-K4-FP32",
+          "n_specimens": 2,
+          "n_trials": 8,
+          "median_reg_s": 2.1486802509998597,
+          "median_setup_s": 6.952731505501106,
+          "median_full_optimization_warmup_s": 2.5520172380001895,
+          "median_setup_plus_warmup_s": 9.504748743501295,
+          "median_worker_wall_s": 22.642872268001156,
+          "max_process_gpu_MiB": 4524.0,
+          "max_process_tree_rss_MiB": 2419.328125,
+          "max_allocator_allocated_MiB": 3500.11328125,
+          "max_allocator_reserved_MiB": 4288.0,
+          "max_sample_gap_s": 0.048958211998979095
+        },
+        {
+          "method": "PoU-FVR+DiffDRR-K4-FP32",
+          "n_specimens": 2,
+          "n_trials": 8,
+          "median_reg_s": 29.70203642350134,
+          "median_setup_s": 2.2698364850011785,
+          "median_full_optimization_warmup_s": 33.44751661999999,
+          "median_setup_plus_warmup_s": 35.717353105001166,
+          "median_worker_wall_s": 158.99226520249977,
+          "max_process_gpu_MiB": 14812.0,
+          "max_process_tree_rss_MiB": 2490.65625,
+          "max_allocator_allocated_MiB": 12027.7900390625,
+          "max_allocator_reserved_MiB": 14552.0,
+          "max_sample_gap_s": 0.04756672299845377
+        }
+      ],
+      "comparisons": [
+        {
+          "method": "DiffDRR-SS-FP32",
+          "reference": "DiffDRR-C64-FP32",
+          "reference_role": "prespecified",
+          "n_specimens": 2,
+          "n_pairs": 8,
+          "n_joint_success": 3,
+          "method_successes": 3,
+          "reference_successes": 8,
+          "median_warm_speed_ratio_all_pairs": 78.75215975928143,
+          "median_warm_speed_ratio_joint_success": 78.665642221833,
+          "median_worker_wall_ratio": 69.47048258965035,
+          "median_process_gpu_ratio": 1.8916311999060245,
+          "median_host_rss_ratio": 1.0001943221008305,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "nanodrr-C64-FP32",
+          "reference": "DiffDRR-C64-FP32",
+          "reference_role": "prespecified",
+          "n_specimens": 2,
+          "n_pairs": 8,
+          "n_joint_success": 8,
+          "method_successes": 8,
+          "reference_successes": 8,
+          "median_warm_speed_ratio_all_pairs": 124.62957100837608,
+          "median_warm_speed_ratio_joint_success": 124.62957100837608,
+          "median_worker_wall_ratio": 100.06070405398813,
+          "median_process_gpu_ratio": 3.1820401026583855,
+          "median_host_rss_ratio": 0.9976530243639286,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "PoU-FVR-G4x4x4-R64",
+          "reference": "DiffDRR-C64-FP32",
+          "reference_role": "prespecified",
+          "n_specimens": 2,
+          "n_pairs": 8,
+          "n_joint_success": 8,
+          "method_successes": 8,
+          "reference_successes": 8,
+          "median_warm_speed_ratio_all_pairs": 70.41983626075347,
+          "median_warm_speed_ratio_joint_success": 70.41983626075347,
+          "median_worker_wall_ratio": 61.36113839725317,
+          "median_process_gpu_ratio": 2.7343682621819747,
+          "median_host_rss_ratio": 0.3482791354904775,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "PoU-FVR+nanodrr-K4-FP32",
+          "reference": "DiffDRR-C64-FP32",
+          "reference_role": "prespecified",
+          "n_specimens": 2,
+          "n_pairs": 8,
+          "n_joint_success": 8,
+          "method_successes": 8,
+          "reference_successes": 8,
+          "median_warm_speed_ratio_all_pairs": 509.8404329718048,
+          "median_warm_speed_ratio_joint_success": 509.8404329718048,
+          "median_worker_wall_ratio": 243.36461320297025,
+          "median_process_gpu_ratio": 3.121695919215311,
+          "median_host_rss_ratio": 0.9781584825027662,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "PoU-FVR+DiffDRR-K4-FP32",
+          "reference": "DiffDRR-C64-FP32",
+          "reference_role": "prespecified",
+          "n_specimens": 2,
+          "n_pairs": 8,
+          "n_joint_success": 8,
+          "method_successes": 8,
+          "reference_successes": 8,
+          "median_warm_speed_ratio_all_pairs": 37.138060609246466,
+          "median_warm_speed_ratio_joint_success": 37.138060609246466,
+          "median_worker_wall_ratio": 34.738093965639194,
+          "median_process_gpu_ratio": 0.9122216513082232,
+          "median_host_rss_ratio": 0.9666110632559208,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "DiffDRR-SS-FP32",
+          "reference": "nanodrr-C64-FP32",
+          "reference_role": "additional descriptive comparator",
+          "n_specimens": 2,
+          "n_pairs": 8,
+          "n_joint_success": 3,
+          "method_successes": 3,
+          "reference_successes": 8,
+          "median_warm_speed_ratio_all_pairs": 0.6327339322960411,
+          "median_warm_speed_ratio_joint_success": 0.6549549430872602,
+          "median_worker_wall_ratio": 0.6968669651901689,
+          "median_process_gpu_ratio": 0.5944291884662998,
+          "median_host_rss_ratio": 1.0025352646476682,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "DiffDRR-C64-FP32",
+          "reference": "nanodrr-C64-FP32",
+          "reference_role": "additional descriptive comparator",
+          "n_specimens": 2,
+          "n_pairs": 8,
+          "n_joint_success": 8,
+          "method_successes": 8,
+          "reference_successes": 8,
+          "median_warm_speed_ratio_all_pairs": 0.00803435084653286,
+          "median_warm_speed_ratio_joint_success": 0.00803435084653286,
+          "median_worker_wall_ratio": 0.01003476329458342,
+          "median_process_gpu_ratio": 0.3142724555496724,
+          "median_host_rss_ratio": 1.0023541341773266,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "PoU-FVR-G4x4x4-R64",
+          "reference": "nanodrr-C64-FP32",
+          "reference_role": "additional descriptive comparator",
+          "n_specimens": 2,
+          "n_pairs": 8,
+          "n_joint_success": 8,
+          "method_successes": 8,
+          "reference_successes": 8,
+          "median_warm_speed_ratio_all_pairs": 0.5656690027422842,
+          "median_warm_speed_ratio_joint_success": 0.5656690027422842,
+          "median_worker_wall_ratio": 0.6126644525245445,
+          "median_process_gpu_ratio": 0.858775334195774,
+          "median_host_rss_ratio": 0.3491005595940624,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "PoU-FVR+nanodrr-K4-FP32",
+          "reference": "nanodrr-C64-FP32",
+          "reference_role": "additional descriptive comparator",
+          "n_specimens": 2,
+          "n_pairs": 8,
+          "n_joint_success": 8,
+          "method_successes": 8,
+          "reference_successes": 8,
+          "median_warm_speed_ratio_all_pairs": 4.065050638161965,
+          "median_warm_speed_ratio_joint_success": 4.065050638161965,
+          "median_worker_wall_ratio": 2.4336086153578034,
+          "median_process_gpu_ratio": 0.9810129199577015,
+          "median_host_rss_ratio": 0.9804741253999125,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        },
+        {
+          "method": "PoU-FVR+DiffDRR-K4-FP32",
+          "reference": "nanodrr-C64-FP32",
+          "reference_role": "additional descriptive comparator",
+          "n_specimens": 2,
+          "n_pairs": 8,
+          "n_joint_success": 8,
+          "method_successes": 8,
+          "reference_successes": 8,
+          "median_warm_speed_ratio_all_pairs": 0.29818660765083327,
+          "median_warm_speed_ratio_joint_success": 0.29818660765083327,
+          "median_worker_wall_ratio": 0.34850108996258156,
+          "median_process_gpu_ratio": 0.28660280817316175,
+          "median_host_rss_ratio": 0.96887805848578,
+          "interpretation": "Every ratio is comparator/method; values above1 favor the method. Joint-success ratios retain their stated selected-pair denominator."
+        }
+      ]
+    }
+  ],
+  "cross_device_specimens": [
+    "subject04"
+  ],
+  "analysis_policy": {
+    "prespecified_reference": "DiffDRR-C64-FP32",
+    "additional_descriptive_comparators": [
+      "nanodrr-C64-FP32"
+    ],
+    "comparator_selection": "Added after acquiring the frozen batch to contextualize gains against a faster spatial implementation; no confirmatory significance inference.",
+    "resource_matching": "Complete specimen blocks within physical GPU UUID; all-worker maxima also reported separately."
+  },
+  "analysis_policy_sha256": "198ec260d22ea056996a82f9fe66e1b7a00bd114e823c368b4267b92298b7cc4",
+  "n_workers": 36,
+  "n_trials": 144,
+  "excluded_from_matched_cost_workers": 6,
+  "limitations": [
+    "Accuracy retains all six previously used development anatomies; no confirmatory inference.",
+    "Cross-device specimens remain in accuracy and are excluded from complete-block resource comparisons.",
+    "Device cohorts contain different anatomies; no between-device performance comparison is inferred.",
+    "The additional nanodrr comparator and device-stratified reporting were chosen after observing the batch; all are descriptive.",
+    "Warm registration excludes preparation; worker wall includes startup, data/provenance, one discarded optimization warmup and all four measured registrations.",
+    "Setup plus warmup is an implementation estimate, not measured clinical first-use latency.",
+    "Process peaks are sampled; allocated and reserved tensor peaks are separate quantities.",
+    "Joint-success speed ratios describe selected successful pairs and do not establish equivalence."
+  ],
+  "input_sha256": {
+    "protocol.json": "725fe4f73134238a3bcdeeb5a02b6e93ec1510b046a1b23e8d1d4a87b49cbf97",
+    "subject01_DiffDRR-C64-FP32.json": "89736f26414ddae797c4b2261610f9436c903836825a63b4bb1b9a1453f5703c",
+    "subject01_DiffDRR-C64-FP32.resources.json": "5a46bd0b125fad6b8331ee8214dbb7d4eeacf66be7639a557ce43f13ed0cb0dc",
+    "subject01_DiffDRR-SS-FP32.json": "9b066cc9e09efac56dfc5b4e2b59bbdddba6fbb9a5c22682f84c2f15d8ea1b78",
+    "subject01_DiffDRR-SS-FP32.resources.json": "3d5f7621031e9fe9e8e02963520f1ab7297af521703b798843f23f5a1165b30d",
+    "subject01_nanodrr-C64-FP32.json": "e21093c80899c3cc9b2d60d48f9c0c3effda1534323f14233fb47095b699b715",
+    "subject01_nanodrr-C64-FP32.resources.json": "3e827840a3d8b4cc30d2cc31c36d605be3bdcf24e38b9430f0329f18738931ff",
+    "subject01_PoU-FVR+DiffDRR-K4-FP32.json": "853512fb5fedec221954658ade3ffc7fd4bb97c6e60154c45357c45f46e1db70",
+    "subject01_PoU-FVR+DiffDRR-K4-FP32.resources.json": "874ea7970d2692d383a0a12af35dccbff069dd89c1d16b9a367b57be423a4481",
+    "subject01_PoU-FVR+nanodrr-K4-FP32.json": "c063e82d2093d9228c63011acfacea26da67f9eeddc91a05cea0bbf87ea87825",
+    "subject01_PoU-FVR+nanodrr-K4-FP32.resources.json": "f1b23012bd0fc159c34baaaacb47dcd9abd2ef67fecb9700d5db18a3fdf4e363",
+    "subject01_PoU-FVR-G4x4x4-R64.json": "9d878d3949c16f4b7e8416aff20edc36d280b4c6146dd8af6bcf0fd267a57cde",
+    "subject01_PoU-FVR-G4x4x4-R64.resources.json": "c8342e21cb86d740bbe2d754dae3c5c92935125d29807bc0f1aa9f57a931c112",
+    "subject02_DiffDRR-C64-FP32.json": "48dcdb8d532381173287aad1e5b941018419d5f029e892fcdf45d6a33c2f5367",
+    "subject02_DiffDRR-C64-FP32.resources.json": "6864441fb80f37abc1795677ee3320b8d703d6994b16b90176f5817097eb0b71",
+    "subject02_DiffDRR-SS-FP32.json": "5ba31eba656a6cd4e05f784268288de7b149ccd86a00e8a541e45d451003db2c",
+    "subject02_DiffDRR-SS-FP32.resources.json": "5353851577c7526e8ce8846cdc82c670c46c8af98939bfbf91de86d4164170b5",
+    "subject02_nanodrr-C64-FP32.json": "2bc493b7c713b4da6457f53ebd7587320ce03254dc10176ef86db50a384e1978",
+    "subject02_nanodrr-C64-FP32.resources.json": "302df07c8a5f6d64b6b434ef103b63f93911e30a98581f41f7dff8ff313db687",
+    "subject02_PoU-FVR+DiffDRR-K4-FP32.json": "917f7b8e4dc3588c7361db6bb60ef40ea0741038096c0055e0ad4f5b0685c540",
+    "subject02_PoU-FVR+DiffDRR-K4-FP32.resources.json": "249a987647dcddc3d7e96e01831d233f3e0d49ef67ee4a010c4b60d52fa73b2e",
+    "subject02_PoU-FVR+nanodrr-K4-FP32.json": "94e6e9d5d536005603a5bed7a9ca395a2a056b24c849101c535cad602a35a815",
+    "subject02_PoU-FVR+nanodrr-K4-FP32.resources.json": "dbab38cca6b426f1d38b9a2eb1d815169cafc7627a1b7d7300d5ccd25819db84",
+    "subject02_PoU-FVR-G4x4x4-R64.json": "f2c0258117228865fd90d685191c9d395d130815ca0019d9d782e6b92cff17db",
+    "subject02_PoU-FVR-G4x4x4-R64.resources.json": "06c35da2e50f26d5f258bfb3427199ff1063437cdd3341c02160d9f1a049e668",
+    "subject03_DiffDRR-C64-FP32.json": "617239f21c3f1e6d158ca17490d30487f9e6cfae132aa86eb1dda97ceab6ce3e",
+    "subject03_DiffDRR-C64-FP32.resources.json": "9fb30104843ec4058197402bdd72711849f3a87252cf32fd90eac2c23ecabbbd",
+    "subject03_DiffDRR-SS-FP32.json": "e71e8af78ace3f5afcf28368c59eb3e6f525c6d737bf6ce39796f08ce3fb430f",
+    "subject03_DiffDRR-SS-FP32.resources.json": "2ced08a0c1d21b30cf1dbebbef92bfed369d0b96c969862ef3dd60d63b49ff7f",
+    "subject03_nanodrr-C64-FP32.json": "55fc0f5a9d7dbd15b4583c29cc4aa2e3da3efafce2696e25c8549f48a7447f7e",
+    "subject03_nanodrr-C64-FP32.resources.json": "631471dc4885ca9f538fca0d49774d4b6ea1cd6207bd82ba1784acce9cc5c8e3",
+    "subject03_PoU-FVR+DiffDRR-K4-FP32.json": "df05072a3527b2b0ab0381df4d4b86eb617b6aff4309c84bdf222e9a888c8061",
+    "subject03_PoU-FVR+DiffDRR-K4-FP32.resources.json": "08880c67924ea67d4cc5872d588ac5e4c87fcedd42b455fd54f57cf588182f39",
+    "subject03_PoU-FVR+nanodrr-K4-FP32.json": "f612a7b4bc49c4345e2a10a7e608a91f34511d904f9f08a8b826a5367ae5b0ea",
+    "subject03_PoU-FVR+nanodrr-K4-FP32.resources.json": "5de147ee5a2bdc46b5c2fa2fed5de63d85164f18fe3d8a3bad118b5b5a0cae9f",
+    "subject03_PoU-FVR-G4x4x4-R64.json": "529832c3cf711ee6b439d724868df3e040a40aac32676f5be4b537f38292b7b8",
+    "subject03_PoU-FVR-G4x4x4-R64.resources.json": "e23ae7947abf26e98ed36bb147a5c2c523fd2d8b3bcedf9d72cd9d14a7e140d5",
+    "subject04_DiffDRR-C64-FP32.json": "d89a443fcc559020d9776b21a17dd29ed5bdbb10f4627e1aaa6b9a1705ae7af6",
+    "subject04_DiffDRR-C64-FP32.resources.json": "fea16c1186d3b489840c5a6639bbfb8724ce88475748dd26a4ec4cdc4f0c64c8",
+    "subject04_DiffDRR-SS-FP32.json": "80957c35e3acb83de9f1ed18ce85c96ca21913017166cf2c6182850efd527382",
+    "subject04_DiffDRR-SS-FP32.resources.json": "8368f98b6e807750e8e39d378a4737be9581a4c81d352c300b52807954ce5ed5",
+    "subject04_nanodrr-C64-FP32.json": "0e8fc66a4df987113cf97c6a0dc0d1f521c8125e8b489c45c252e45998e45e76",
+    "subject04_nanodrr-C64-FP32.resources.json": "cfcefd13ddc60ca3dfd816d5784cbac4c00f6228297ca382ec3e8200007ab698",
+    "subject04_PoU-FVR+DiffDRR-K4-FP32.json": "43811cbe22712113e1f7d5e6a3cee23d6b0f1a6286845ee5880b1d7276db904d",
+    "subject04_PoU-FVR+DiffDRR-K4-FP32.resources.json": "3335b7944ec2b8bc00d2c95c73c3a964e2fb7acc258046a969b45313d27c63ac",
+    "subject04_PoU-FVR+nanodrr-K4-FP32.json": "28dfdc83877b99b79c6c7e6b719d49442248e874d7cbaf230578512102d32d50",
+    "subject04_PoU-FVR+nanodrr-K4-FP32.resources.json": "7da1ef1efa255f12b4209117cc582d98d8ebb991d3da9a5efba5c378eba06967",
+    "subject04_PoU-FVR-G4x4x4-R64.json": "3b90614826ab8701b25b63efe5b33488366e549f9bf41ec1932c656f626c05c6",
+    "subject04_PoU-FVR-G4x4x4-R64.resources.json": "5ef86e1cc386e45b8eb86183493660b8d657ae880e5620e8ac621de1feb5f10d",
+    "subject05_DiffDRR-C64-FP32.json": "352145f1e6ea11e26eb3b42874ad8f1c50ca1e7d92fdd04dadf04c6b9b221f71",
+    "subject05_DiffDRR-C64-FP32.resources.json": "7d0e3fdd28ab90f2a92321cc5b68613f2abd7121f9e6a132ffe438ec0784045f",
+    "subject05_DiffDRR-SS-FP32.json": "96bf1e01e4a9f24a2330b2c84a5233e46eb9fd934bb8a54c406d5fd4b8b8aa5b",
+    "subject05_DiffDRR-SS-FP32.resources.json": "06cf03f34f2f673d52b0cca43685a745ced0b824e226d7e72ce3ad8531e62e7c",
+    "subject05_nanodrr-C64-FP32.json": "5b4df390929275e102da34c40c3703703c711854a769cb2e6de5621d60f1a206",
+    "subject05_nanodrr-C64-FP32.resources.json": "1c6020b163911675ef950646cb85733a2113d00cdd071b446a69ca74c2876b19",
+    "subject05_PoU-FVR+DiffDRR-K4-FP32.json": "3d8d934fc2d576db380315fb545be1b2b283eee2722ca8904cde426ba85f748f",
+    "subject05_PoU-FVR+DiffDRR-K4-FP32.resources.json": "9144ce29e29581329fb3ff7bd624c3cef27b16513ca6ecc1ae061035aa369937",
+    "subject05_PoU-FVR+nanodrr-K4-FP32.json": "8dd7da181e9448984a928b24f3ec1f1c6f6b33ab49e28d474000e20e3536b471",
+    "subject05_PoU-FVR+nanodrr-K4-FP32.resources.json": "6d8a21118f770e6fa9341780db28b2a1122b56841125fb2cf4a73123a473e419",
+    "subject05_PoU-FVR-G4x4x4-R64.json": "082a736957a0ee97cf8470e43bd6db4d23829c8d24632f2926b4d572574aa978",
+    "subject05_PoU-FVR-G4x4x4-R64.resources.json": "cb934a8792749fcf5cff27e62c77e81dbbf74981f80acee3ec859425147e7856",
+    "subject06_DiffDRR-C64-FP32.json": "e8ab2b1bcb97ec1ccfb1d9e2b94178ef8618b2c4683d32e7c7bb761fc3dce697",
+    "subject06_DiffDRR-C64-FP32.resources.json": "d7a4b46e86a9cab84142491a70f56c2345380ff105115557a857917e6150492a",
+    "subject06_DiffDRR-SS-FP32.json": "9be8a16f19e9576eff58ca3132bc07dce09912f56230da9b04f449cb6a4fed44",
+    "subject06_DiffDRR-SS-FP32.resources.json": "24b8058bad8af2390cae0ad13d9c15af29ac0a793b1047f3c6848f9557b7b036",
+    "subject06_nanodrr-C64-FP32.json": "c3a05321e09d5477b53a03ec7c2cdcdc1c041b9f26498b792166a07ce62cd253",
+    "subject06_nanodrr-C64-FP32.resources.json": "c6cba5dfbd0d2161c4ff32ad71ae9ce34807274e139d05c47831b57d8db0a641",
+    "subject06_PoU-FVR+DiffDRR-K4-FP32.json": "ba7fead4a68baec818cf07e28cf9f3e5c8fa68198ee90aa9c3457798f6b3b198",
+    "subject06_PoU-FVR+DiffDRR-K4-FP32.resources.json": "9c604f714606f6412ad027258dbc006d2cbbe7fb8ba107ed754afad64e9c87b0",
+    "subject06_PoU-FVR+nanodrr-K4-FP32.json": "9ceb20d5a88ba5499ee525c75c96d5ea50ba2d8e4d5eb7e9cc663a84f804a1f0",
+    "subject06_PoU-FVR+nanodrr-K4-FP32.resources.json": "920573afd270e33e67f3f15a3ea543b33e5b8ac771db14b8d5115c485f899b8d",
+    "subject06_PoU-FVR-G4x4x4-R64.json": "a8c35c2f3a4fe0af19259c5993e16b463ac6f656fb0daea55c90be9b13e91bc3",
+    "subject06_PoU-FVR-G4x4x4-R64.resources.json": "2d2c5fdf4e498553abaab6305018d06bd063ad3b911e54b88dbd45c80fd318ad"
+  },
+  "analysis_source_sha256": {
+    "summarize_journal_sessions.py": "2418e6b7879bd11f05230b89a892b67a613ecd29af10fb1b2912e3f2b56d2a64",
+    "summarize_journal_replication.py": "a74dd516f059a26d5c10bf0e6fa1aac706dfa001f683de935d84d38d07f69910"
+  }
+}

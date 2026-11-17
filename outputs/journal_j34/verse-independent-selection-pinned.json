@@ -1,0 +1,63 @@
+{
+  "id": "DFVR-VERSE-01-selection",
+  "created_utc": "2026-11-16T04:09:16.052405+00:00",
+  "source_url": "https://s3.bonescreen.de/public/VerSe-complete/dataset-verse19test.zip",
+  "source_repository": "https://github.com/anjany/verse",
+  "license": "CC BY-SA 4.0",
+  "selection_rule": "First six lexicographically sorted raw CT subjects in VerSe19 test ZIP; fixed before registration outcomes",
+  "cases": [
+    {
+      "subject": "sub-verse012",
+      "ct_member": "dataset-verse19test/rawdata/sub-verse012/sub-verse012_ct.nii.gz",
+      "ct_bytes": 5928916,
+      "centroid_member": "dataset-verse19test/derivatives/sub-verse012/sub-verse012_seg-subreg_ctd.json",
+      "centroid_sha256": "8a4190ec1665f27e25e2535a66954b0aca91a1091ed9c965194284ead2b51501",
+      "ct_sha256": "395fd6e8b36325b856c813032a0fec2104a049a32f0b3d4f34682b032cbe2662"
+    },
+    {
+      "subject": "sub-verse020",
+      "ct_member": "dataset-verse19test/rawdata/sub-verse020/sub-verse020_ct.nii.gz",
+      "ct_bytes": 32430193,
+      "centroid_member": "dataset-verse19test/derivatives/sub-verse020/sub-verse020_seg-subreg_ctd.json",
+      "centroid_sha256": "28652d056c8f96fd949dc53caa5d7700d104253861113294537344af46cf5587",
+      "ct_sha256": "7424d0f0ad3c36b6c5ffe5f3acb9af62c16da3cec8c507597965f95410570d9a"
+    },
+    {
+      "subject": "sub-verse029",
+      "ct_member": "dataset-verse19test/rawdata/sub-verse029/sub-verse029_ct.nii.gz",
+      "ct_bytes": 76700844,
+      "centroid_member": "dataset-verse19test/derivatives/sub-verse029/sub-verse029_seg-subreg_ctd.json",
+      "centroid_sha256": "338005eb78f19a2f845093863f7db0205160534a9c6155b2ebc8bfbfccb1b49b",
+      "ct_sha256": "274e6ad441f11577f09e81107cf89e696097cd42a6b3d707bb68caf8cad7a91e"
+    },
+    {
+      "subject": "sub-verse032",
+      "ct_member": "dataset-verse19test/rawdata/sub-verse032/sub-verse032_ct.nii.gz",
+      "ct_bytes": 12621149,
+      "centroid_member": "dataset-verse19test/derivatives/sub-verse032/sub-verse032_seg-subreg_ctd.json",
+      "centroid_sha256": "fb87140e759d43a25a4eb9aa89e6df7c4796f7793c970974dc7e8d418c0eab20",
+      "ct_sha256": "059ab6ee6d090f1af5c15eb2d718026f40b2be53276ee6bb0b9bb35269686866"
+    },
+    {
+      "subject": "sub-verse038",
+      "ct_member": "dataset-verse19test/rawdata/sub-verse038/sub-verse038_ct.nii.gz",
+      "ct_bytes": 78789449,
+      "centroid_member": "dataset-verse19test/derivatives/sub-verse038/sub-verse038_seg-subreg_ctd.json",
+      "centroid_sha256": "a236c276441dea0519566309b76273de4ff3cf64975b7cdfb12bad2728103fbe",
+      "ct_sha256": "c6b6c94944387760beddb65aa6868db3cc4500086bb977d9ef72709ddebad15e"
+    },
+    {
+      "subject": "sub-verse040",
+      "ct_member": "dataset-verse19test/rawdata/sub-verse040/sub-verse040_ct.nii.gz",
+      "ct_bytes": 71320642,
+      "centroid_member": "dataset-verse19test/derivatives/sub-verse040/sub-verse040_seg-subreg_ctd.json",
+      "centroid_sha256": "472d020bee2d485ecfff5f236cd19359d7b0acba256692bdfbd8cb84a80e3b5f",
+      "ct_sha256": "5c7d74f0e70afbb439492cf83f0cfc77b0479fd5a42b9cb4132802bd51feaebc"
+    }
+  ],
+  "scope": "Independent anatomy with synthetic target projections, not independent acquired X-ray validation",
+  "status": "Selected only; no registration outcomes measured",
+  "coordinate_rule": "Centroids are voxel coordinates in declared annotation orientation; reorient coordinates consistently before NIfTI affine conversion",
+  "pinning_note": "Case IDs and centroid hashes fixed16Nov before outcomes. CT digests acquired and recorded for all6 inputs before optimization; expected digest checks added during post-run audit. Original selection and report are retained unchanged.",
+  "pinned_utc": "2026-11-17T04:49:22.467534+00:00"
+}
